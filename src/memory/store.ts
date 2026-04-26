@@ -162,7 +162,7 @@ export class MemoryStore {
       LIMIT @limit
     `).all(params) as { atom_json: string }[];
 
-    // FTS 对中文分词并不完美，若无结果则退化为 LIKE。
+    // FTS 对中文分词并不完美，若无结果则退化为 LIKE + token scoring。
     if (rows.length === 0) {
       const likeRows = this.db.prepare(`
         SELECT atom_json FROM memories m
@@ -171,9 +171,49 @@ export class MemoryStore {
         ORDER BY m.importance DESC, m.valid_at DESC
         LIMIT @limit
       `).all({ ...params, like: `%${query}%` }) as { atom_json: string }[];
-      return likeRows.map((row) => MemoryAtomSchema.parse(JSON.parse(row.atom_json)));
+      if (likeRows.length > 0) {
+        return likeRows.map((row) => MemoryAtomSchema.parse(JSON.parse(row.atom_json)));
+      }
+
+      // 最后一层兜底：从问句中抽取英文/数字 token 和中文片段，做轻量包含匹配。
+      // 例如“我们为什么不用 MongoDB？”应能通过 MongoDB 命中“决定不使用 MongoDB”。
+      const candidateRows = this.db.prepare(`
+        SELECT atom_json FROM memories m
+        WHERE 1 = 1
+        ${filters.length ? `AND ${filters.join(" AND ")}` : ""}
+        LIMIT 200
+      `).all(params) as { atom_json: string }[];
+      const tokens = extractQueryTokens(query);
+      return candidateRows
+        .map((row) => MemoryAtomSchema.parse(JSON.parse(row.atom_json)))
+        .map((atom) => ({ atom, score: scoreByTokens(atom, tokens) }))
+        .filter((item) => item.score > 0)
+        .sort((a, b) => b.score - a.score || b.atom.importance - a.atom.importance)
+        .slice(0, limit)
+        .map((item) => item.atom);
     }
 
     return rows.map((row) => MemoryAtomSchema.parse(JSON.parse(row.atom_json)));
   }
+}
+
+function extractQueryTokens(query: string): string[] {
+  const latin = query.match(/[A-Za-z0-9_+#.-]{2,}/g) ?? [];
+  const cjk = query.match(/[\u4e00-\u9fa5]{2,}/g) ?? [];
+  const cjkPieces = cjk.flatMap((part) => {
+    if (part.length <= 4) return [part];
+    const pieces: string[] = [];
+    for (let i = 0; i < part.length - 1; i++) pieces.push(part.slice(i, i + 2));
+    return pieces;
+  });
+  return [...new Set([...latin, ...cjkPieces].map((item) => item.toLowerCase()))];
+}
+
+function scoreByTokens(atom: MemoryAtom, tokens: string[]): number {
+  const haystack = `${atom.subject} ${atom.content} ${atom.tags.join(" ")}`.toLowerCase();
+  let score = 0;
+  for (const token of tokens) {
+    if (haystack.includes(token)) score += token.length >= 4 ? 2 : 1;
+  }
+  return score + atom.confidence + atom.importance / 10;
 }
