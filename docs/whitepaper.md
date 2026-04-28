@@ -174,7 +174,7 @@ type DecisionCandidate = {
 1. 默认 Decision Extractor 仍是规则 baseline；LLMDecisionExtractor 已有可选路径，但小型显式评测当前观测为 3/4 通过，存在超时样本，不能宣传为生产级抽取效果；
 2. Candidate Segment Pipeline 仍是输入清洗 baseline，不是核心智能算法；
 3. `recall` 是检索 + 确定性格式化回答，不是完整自然语言问答生成；
-4. `remind` 已有本地到期查询 MVP，但尚未实现 ack / snooze / 重复提醒控制 / 飞书推送；
+4. `remind` 已有本地到期查询、ack、snooze MVP，但尚未实现飞书推送和周期性自动投递；
 5. 历史决策卡片已有 CLI 文本版和飞书 payload 生成，但尚未真正发送飞书交互式卡片；
 6. 飞书接入目前依赖 OpenClaw 工具拉取 / 导出文档，Kairos CLI 尚未内置飞书 API OAuth 调用；
 7. Benchmark 数据集仍然很小，core eval 只有 26 个最小用例，只能证明最小闭环可跑，不能代表真实生产效果。
@@ -186,7 +186,7 @@ type DecisionCandidate = {
 接下来优先做：
 
 1. 修正 LLM 路径稳定性：缩短 prompt、优化 timeout/retry、扩大真实样本评测；
-2. 完善 Remind 生命周期：ack / snooze / 重复提醒控制；
+2. 完善 Remind 投递链路：飞书推送、周期性自动投递、提醒策略配置；
 3. 安全接入飞书卡片推送：复用现有 `--feishu-json` payload，但发送前必须确认对象和内容；
 4. 扩充 Benchmark：真实飞书导出片段、抗干扰、矛盾更新、召回质量；
 5. 稳定飞书会话导出 → CLI → recall / decision-card 的演示链路；
