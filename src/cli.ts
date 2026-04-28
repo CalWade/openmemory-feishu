@@ -7,6 +7,7 @@ import { MemoryStore } from "./memory/store.js";
 import { loadSmokeCases, summarizeSmokeCases } from "./eval/smoke.js";
 import { createAtomFromFact, extractFacts, reconcileFact } from "./extractor/mockExtractor.js";
 import { normalizeFeishuMarkdown } from "./candidate/feishuDoc.js";
+import { normalizeFeishuChatExport } from "./candidate/feishuChatExport.js";
 
 const program = new Command();
 
@@ -20,6 +21,28 @@ function storeFromOptions(opts: { db?: string; events?: string }) {
 }
 
 
+
+
+program
+  .command("normalize-chat-export")
+  .description("将飞书会话导出云文档的 Markdown 标准化为逐条 NormalizedMessage")
+  .requiredOption("--file <path>", "Markdown 文件路径")
+  .option("--doc-token <token>", "飞书文档 token")
+  .option("--chat-id <chatId>", "原始会话 ID")
+  .option("--limit <limit>", "输出前 N 条", "20")
+  .action((opts) => {
+    const markdown = readFileSync(opts.file, "utf8");
+    const messages = normalizeFeishuChatExport(markdown, {
+      docToken: opts.docToken,
+      chatId: opts.chatId,
+    });
+    console.log(JSON.stringify({
+      ok: true,
+      command: "normalize-chat-export",
+      total: messages.length,
+      sample: messages.slice(0, Number(opts.limit)),
+    }, null, 2));
+  });
 
 program
   .command("normalize-doc")
