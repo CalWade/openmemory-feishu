@@ -1,10 +1,10 @@
-# Kairos 当前项目状态（实事求是版）
+# Kairos 当前项目状态
 
 更新时间：2026-04-28
 
 ## 已完成且可运行
 
-- CLI 骨架：`memoryops`
+- CLI：`memoryops`
 - MemoryAtom v0.2 类型与 Zod Schema
 - SQLite Memory Store
 - JSONL Event Log
@@ -14,16 +14,13 @@
 - 候选片段 baseline：`segment-chat-export`
 - 结构化决策抽取 baseline：`extract-decision`
 - DecisionCandidate → MemoryAtom 写入
-- 核心评测 runner：
-  - decision-extraction
-  - conflict-update
-  - recall
+- 核心评测 runner：decision-extraction / conflict-update / recall
 - Vitest 单元测试
 
-## 当前真实性能边界
+## 真实边界
 
 - Decision Extractor 仍是规则 baseline，不是 LLM 版本。
-- Candidate Segment Pipeline 仍是规则 baseline，不应作为核心智能卖点。
+- Candidate Segment Pipeline 仍是输入清洗 baseline，不应作为核心智能卖点。
 - 飞书接入目前依赖 OpenClaw 工具拉取/导出文档，Kairos CLI 尚未内置飞书 API OAuth 调用。
 - `recall` 目前是检索式回答，不是完整自然语言问答生成。
 - 遗忘提醒 `remind` 尚未真正实现。
@@ -31,9 +28,7 @@
 
 ## 当前主线
 
-Kairos 当前应聚焦：项目决策记忆引擎。
-
-目标闭环：
+Kairos 当前聚焦：项目决策记忆引擎。
 
 ```text
 飞书会话导出/项目讨论文本
@@ -50,5 +45,5 @@ Kairos 当前应聚焦：项目决策记忆引擎。
 1. LLMDecisionExtractor：替换规则 baseline。
 2. Remind / Forgetting：风险记忆复习提醒。
 3. Decision Card：历史决策卡片文本/飞书卡片。
-4. Benchmark 扩充：从 1-3 个 case 扩到可展示的数据集。
+4. Benchmark 扩充：从极小 case 扩到可展示数据集。
 5. 飞书端演示闭环：至少完成导出文档 → CLI → recall 的稳定 demo。

@@ -1,66 +1,95 @@
-# MemoryOps Benchmark Report
+# Kairos Benchmark Report
 
-> 当前为评测报告草稿，后续会随着 `memoryops eval` 实现逐步补充真实结果。
+> 当前为 MVP 阶段评测报告，记录真实已实现的最小评测，不夸大效果。
 
-## 1. 评测目标
+## 1. 当前评测命令
 
-Kairos 的 Benchmark 不是为了追求抽象指标，而是回答三个问题：
+```bash
+npm run dev -- eval --core
+```
 
-1. 系统是否能在大量无关信息中找回关键记忆？
-2. 系统是否能正确处理新旧记忆冲突？
-3. 系统是否能量化减少重复查询和沟通成本？
+当前包含 3 个 suite：
 
-## 2. 评测集设计
+| Suite | 目标 | Case 数 |
+|---|---|---:|
+| decision-extraction | 验证结构化决策 / 风险 / none 抽取 | 3 |
+| conflict-update | 验证新旧规则冲突覆盖 | 1 |
+| recall | 验证反向问题能否召回决策理由 | 1 |
 
-### 2.1 抗干扰测试
+## 2. 当前结果
 
-构造方式：
+截至 2026-04-28：
 
-- 插入一条关键项目决策；
-- 添加 20 / 50 / 100 条无关聊天；
-- 提问与关键决策相关的问题。
+```text
+decision-extraction: 3 / 3 passed
+conflict-update: 1 / 1 passed
+recall: 1 / 1 passed
+```
 
-指标：
+这只能说明最小闭环可运行，不能说明系统已经具备真实生产效果。
 
-- Recall@1；
-- Recall@3；
-- Answer Accuracy；
-- Evidence Citation Rate。
+## 3. 已覆盖能力
 
-### 2.2 矛盾更新测试
+### 3.1 决策抽取
 
 示例：
 
 ```text
-旧记忆：周报发给 Alice
-新记忆：周报改发给 Bob
-查询：周报发给谁？
-期望：Bob，同时保留 Alice 历史版本
+最终决定 MVP 阶段使用 SQLite，同时保留 JSONL Event Log。
+PostgreSQL 对复赛 demo 来说部署成本太高。
 ```
 
-指标：
+期望：
 
-- Conflict Detection Accuracy；
-- Current Value Accuracy；
-- Old Memory Superseded Rate；
-- History Preservation Rate。
+- kind = decision；
+- topic = local_storage_selection；
+- decision 包含 SQLite；
+- rejected_options 包含 PostgreSQL；
+- reasons 包含部署成本。
 
-### 2.3 遗忘提醒测试
+### 3.2 矛盾更新
 
-使用 fast-forward 模拟时间，验证 review_at 与 decay_policy 是否按预期触发。
+示例：
 
-### 2.4 效能指标测试
+```text
+旧：以后周报每周五发给 Alice。
+新：不对，周报以后发给 Bob。
+```
 
-比较使用前后：
+期望：
 
-- 操作步数；
-- 查询耗时；
-- 输入字符数；
-- 重复沟通次数。
+- 当前值为 Bob；
+- Alice 旧记忆 status = superseded；
+- 历史版本仍可查询。
 
-## 3. 当前状态
+### 3.3 反向召回
 
-- [ ] smoke cases
-- [ ] full benchmark cases
-- [ ] eval runner
-- [ ] report generator
+示例问题：
+
+```text
+为什么不用 PostgreSQL？
+```
+
+期望召回：
+
+```text
+MVP 阶段使用 SQLite + JSONL；PostgreSQL 部署成本较高，可能影响复赛 demo 运行。
+```
+
+## 4. 当前不足
+
+- Case 数太少；
+- 评测数据仍是人工构造；
+- Decision Extractor 是规则 baseline；
+- 没有覆盖复杂时序更新；
+- 没有覆盖飞书端主动决策卡片；
+- 没有真实用户耗时对比数据。
+
+## 5. 下一步评测计划
+
+复赛前应扩充：
+
+1. 抗干扰测试：噪声消息 + 隐藏关键决策；
+2. 决策更新测试：MVP 阶段 SQLite → 决赛阶段 PostgreSQL；
+3. 风险提醒测试：review_at 到期提醒；
+4. 效能指标：手动翻聊天 vs Kairos recall 的步数和时间对比。
