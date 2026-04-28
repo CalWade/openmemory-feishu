@@ -203,6 +203,8 @@ memoryops/
 
 ## 当前进度
 
+- [x] Candidate Segment Pipeline 第一步：Message Normalization 标准消息结构
+
 - [x] 项目方向确定
 - [x] GitHub 仓库初始化
 - [x] README 初稿
