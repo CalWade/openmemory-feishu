@@ -162,7 +162,7 @@ memoryops add --text "最终决定使用 PostgreSQL，不使用 MongoDB"
 memoryops search "数据库方案"
 memoryops recall "我们为什么不用 MongoDB？" --evidence
 memoryops history <atom_id>
-memoryops remind --now 2026-05-30
+memoryops remind --project kairos --now 2026-05-30T00:00:00.000Z
 memoryops eval --smoke
 memoryops schema:check
 
@@ -216,7 +216,7 @@ memoryops/
 - [x] Candidate Segment Pipeline 第四步：Context Windowing + Denoising
 - [x] Decision Extractor baseline：结构化抽取决策/规则/风险/工作流
 - [x] DecisionCandidate 写入 MemoryAtom 并支持反向召回
-- [x] 核心评测 runner：决策抽取 / 矛盾更新 / 召回 / 抗干扰
+- [x] 核心评测 runner：决策抽取 / 矛盾更新 / 召回 / 抗干扰 / 到期提醒
 
 - [x] 项目方向确定
 - [x] GitHub 仓库初始化
@@ -229,7 +229,8 @@ memoryops/
 - [x] mock Extract / Reconcile 骨架
 - [x] 飞书会话导出文档标准化 POC
 - [x] 冲突更新
-- [ ] fast-forward 遗忘提醒
+- [x] Remind 本地 MVP：按 review_at 查询到期风险记忆
+- [ ] 飞书端提醒推送与提醒处理状态
 - [x] smoke benchmark 数据集草案
 - [ ] Demo 录屏
 

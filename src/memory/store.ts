@@ -14,6 +14,13 @@ export type SearchOptions = {
   limit?: number;
 };
 
+export type ReminderOptions = {
+  project?: string;
+  type?: string;
+  now?: string;
+  limit?: number;
+};
+
 export class MemoryStore {
   private readonly db: Database.Database;
   private readonly eventLog: EventLog;
@@ -200,6 +207,23 @@ export class MemoryStore {
     if (options.scope) { where.push(`scope = @scope`); params.scope = options.scope; }
     const sql = `SELECT atom_json FROM memories ${where.length ? `WHERE ${where.join(" AND ")}` : ""} ORDER BY importance DESC, valid_at DESC LIMIT @limit`;
     const rows = this.db.prepare(sql).all({ ...params, limit: options.limit ?? 20 }) as { atom_json: string }[];
+    return rows.map((row) => MemoryAtomSchema.parse(JSON.parse(row.atom_json)));
+  }
+
+  dueReminders(options: ReminderOptions = {}): MemoryAtom[] {
+    const filters = [`status = 'active'`, `review_at IS NOT NULL`, `review_at <= @now`];
+    const params: Record<string, unknown> = {
+      now: options.now ?? new Date().toISOString(),
+      limit: options.limit ?? 20,
+    };
+    if (options.project) { filters.push(`project = @project`); params.project = options.project; }
+    if (options.type) { filters.push(`type = @type`); params.type = options.type; }
+    const rows = this.db.prepare(`
+      SELECT atom_json FROM memories
+      WHERE ${filters.join(" AND ")}
+      ORDER BY review_at ASC, importance DESC, valid_at DESC
+      LIMIT @limit
+    `).all(params) as { atom_json: string }[];
     return rows.map((row) => MemoryAtomSchema.parse(JSON.parse(row.atom_json)));
   }
 

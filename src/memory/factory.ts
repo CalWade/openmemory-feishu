@@ -14,6 +14,7 @@ export type CreateMemoryInput = {
   confidence?: number;
   decay_policy?: DecayPolicy;
   now?: string;
+  review_at?: string;
 };
 
 function inferSubject(text: string): string {
@@ -46,6 +47,7 @@ export function createManualMemory(input: CreateMemoryInput): MemoryAtom {
     },
     tags: input.tags ?? [],
     decay_policy: input.decay_policy ?? "step",
+    review_at: input.review_at,
     access_count: 0,
   };
 }

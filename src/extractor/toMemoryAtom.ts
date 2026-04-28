@@ -3,11 +3,12 @@ import type { MemoryAtom, MemoryType } from "../memory/atom.js";
 import { createManualMemory } from "../memory/factory.js";
 import type { ExtractionResult } from "./decisionTypes.js";
 
-export function extractionToMemoryAtom(result: ExtractionResult, window: CandidateWindow, project?: string): MemoryAtom | undefined {
+export function extractionToMemoryAtom(result: ExtractionResult, window: CandidateWindow, project?: string, nowOverride?: string): MemoryAtom | undefined {
   if (result.kind === "none") return undefined;
   const type = mapKindToMemoryType(result.kind);
-  const now = new Date().toISOString();
+  const now = nowOverride ?? new Date().toISOString();
   const { subject, content, tags, importance, decay_policy } = buildAtomContent(result);
+  const review_at = computeReviewAt(result, now);
   return {
     ...createManualMemory({
       text: content,
@@ -22,6 +23,7 @@ export function extractionToMemoryAtom(result: ExtractionResult, window: Candida
       confidence: result.confidence,
       decay_policy,
       now,
+      review_at,
     }),
     source: {
       channel: "manual",
@@ -37,6 +39,13 @@ export function extractionToMemoryAtom(result: ExtractionResult, window: Candida
       raw_extraction: result,
     },
   };
+}
+
+function computeReviewAt(result: ExtractionResult, now: string): string | undefined {
+  if (result.kind !== "risk" || !result.review_after_days) return undefined;
+  const due = new Date(now);
+  due.setUTCDate(due.getUTCDate() + result.review_after_days);
+  return due.toISOString();
 }
 
 function mapKindToMemoryType(kind: Exclude<ExtractionResult["kind"], "none">): MemoryType {

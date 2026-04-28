@@ -78,4 +78,36 @@ describe("MemoryStore", () => {
 
     expect(candidates.map((item) => item.id)).toContain(oldAtom.id);
   }));
+
+  it("dueReminders 只返回 review_at 已到期的活跃记忆", () => withStore((store) => {
+    store.upsert(createManualMemory({
+      text: "生产环境 API Key 不允许前端直连，必须走服务端代理。",
+      project: "kairos",
+      type: "risk",
+      subject: "api_key_policy",
+      importance: 5,
+      review_at: "2026-05-01T00:00:00.000Z",
+    }));
+    store.upsert(createManualMemory({
+      text: "预览 PDF 乱码风险下周再复查。",
+      project: "kairos",
+      type: "risk",
+      subject: "preview_independent_ip_requirement",
+      importance: 4,
+      review_at: "2026-05-10T00:00:00.000Z",
+    }));
+    store.upsert(createManualMemory({
+      text: "普通知识没有复查时间。",
+      project: "kairos",
+      type: "knowledge",
+      subject: "note",
+    }));
+
+    const reminders = store.dueReminders({ project: "kairos", now: "2026-05-01T00:00:00.000Z" });
+
+    expect(reminders).toHaveLength(1);
+    expect(reminders[0].subject).toBe("api_key_policy");
+    expect(reminders[0].review_at).toBe("2026-05-01T00:00:00.000Z");
+  }));
+
 });

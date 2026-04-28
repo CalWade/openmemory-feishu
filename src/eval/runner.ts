@@ -68,6 +68,24 @@ export function runAntiInterferenceEval(path = "eval/datasets/anti-interference.
   return summarize("anti-interference", results);
 }
 
+export function runRemindEval(path = "eval/datasets/remind.jsonl"): EvalResult {
+  const cases = readJsonl<any>(path);
+  const baseNow = "2026-04-28T00:00:00.000Z";
+  const results = cases.map((item) => withTempStore((store) => {
+    const extraction = extractDecisionBaseline(window(item.memory));
+    const atom = extractionToMemoryAtom(extraction, window(item.memory), "kairos", baseNow);
+    if (atom) store.upsert(atom);
+    const now = addDays(baseNow, item.now_offset_days ?? 0);
+    const reminders = store.dueReminders({ project: "kairos", now });
+    const text = reminders.map((hit) => hit.content).join("\n");
+    const totalOk = item.expected_total === undefined || reminders.length === item.expected_total;
+    const containsOk = (item.expected_contains ?? []).every((needle: string) => text.includes(needle));
+    const passed = totalOk && containsOk;
+    return { id: item.id, passed, actual: { now, reminders }, reason: passed ? undefined : "提醒到期结果不符合期望" };
+  }));
+  return summarize("remind", results);
+}
+
 export function runRecallEval(path = "eval/datasets/recall.jsonl"): EvalResult {
   const cases = readJsonl<any>(path);
   const results = cases.map((item) => withTempStore((store) => {
@@ -83,7 +101,7 @@ export function runRecallEval(path = "eval/datasets/recall.jsonl"): EvalResult {
 }
 
 export function runAllCoreEvals(): EvalResult[] {
-  return [runDecisionExtractionEval(), runConflictUpdateEval(), runRecallEval(), runAntiInterferenceEval()];
+  return [runDecisionExtractionEval(), runConflictUpdateEval(), runRecallEval(), runAntiInterferenceEval(), runRemindEval()];
 }
 
 function window(text: string): CandidateWindow {
@@ -99,6 +117,12 @@ function window(text: string): CandidateWindow {
     dropped_message_ids: [],
     estimated_tokens: Math.ceil(text.length / 2),
   };
+}
+
+function addDays(iso: string, days: number): string {
+  const date = new Date(iso);
+  date.setUTCDate(date.getUTCDate() + days);
+  return date.toISOString();
 }
 
 function readJsonl<T>(path: string): T[] {

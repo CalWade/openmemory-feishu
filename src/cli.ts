@@ -5,7 +5,7 @@ import { MemoryAtomSchema } from "./memory/schema.js";
 import { createManualMemory } from "./memory/factory.js";
 import { MemoryStore } from "./memory/store.js";
 import { loadSmokeCases, summarizeSmokeCases } from "./eval/smoke.js";
-import { runAllCoreEvals, runConflictUpdateEval, runDecisionExtractionEval, runRecallEval } from "./eval/runner.js";
+import { runAllCoreEvals, runAntiInterferenceEval, runConflictUpdateEval, runDecisionExtractionEval, runRecallEval, runRemindEval } from "./eval/runner.js";
 import { createAtomFromFact, extractFacts, reconcileFact } from "./extractor/mockExtractor.js";
 import { normalizeFeishuChatExport } from "./candidate/feishuChatExport.js";
 import { segmentMessages } from "./candidate/segment.js";
@@ -284,17 +284,44 @@ program
 
 program
   .command("remind")
-  .option("--now <time>", "mock current time")
-  .description("Show due memory reminders")
+  .option("--now <time>", "mock current time, ISO 8601")
+  .option("--project <project>", "项目名")
+  .option("--type <type>", "记忆类型，默认不过滤")
+  .option("--limit <limit>", "返回数量", "20")
+  .option("--db <path>", "SQLite 数据库路径")
+  .option("--events <path>", "JSONL event log 路径")
+  .description("列出 review_at 已到期的记忆提醒（MVP，本地查询，不做推送）")
   .action((opts) => {
-    console.log(JSON.stringify({ ok: true, command: "remind", now: opts.now ?? new Date().toISOString(), reminders: [] }, null, 2));
+    const now = opts.now ?? new Date().toISOString();
+    const reminders = storeFromOptions(opts).dueReminders({
+      now,
+      project: opts.project,
+      type: opts.type,
+      limit: Number(opts.limit),
+    });
+    console.log(JSON.stringify({
+      ok: true,
+      command: "remind",
+      now,
+      total: reminders.length,
+      reminders: reminders.map((item) => ({
+        id: item.id,
+        type: item.type,
+        project: item.project,
+        subject: item.subject,
+        content: item.content,
+        review_at: item.review_at,
+        importance: item.importance,
+        source: item.source,
+      })),
+    }, null, 2));
   });
 
 program
   .command("eval")
   .option("--smoke", "run smoke benchmark")
   .option("--core", "run core benchmark: decision extraction + conflict update + recall")
-  .option("--suite <suite>", "run a specific suite: decision-extraction | conflict-update | recall")
+  .option("--suite <suite>", "run a specific suite: decision-extraction | conflict-update | recall | anti-interference | remind")
   .description("Run benchmarks")
   .action((opts) => {
     if (opts.smoke) {
@@ -314,7 +341,11 @@ program
           ? runConflictUpdateEval()
           : opts.suite === "recall"
             ? runRecallEval()
-            : undefined;
+            : opts.suite === "anti-interference"
+              ? runAntiInterferenceEval()
+              : opts.suite === "remind"
+                ? runRemindEval()
+                : undefined;
       if (!result) throw new Error(`未知 suite: ${opts.suite}`);
       console.log(JSON.stringify({ ok: true, command: "eval", result }, null, 2));
       return;

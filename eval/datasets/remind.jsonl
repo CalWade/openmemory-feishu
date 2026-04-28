@@ -1,0 +1,2 @@
+{"id": "risk_api_key_due_001", "memory": "生产环境不允许前端直连 API Key，必须走服务端代理，否则密钥泄露风险太高。", "now_offset_days": 3, "expected_contains": ["API Key", "服务端"]}
+{"id": "risk_api_key_not_due_001", "memory": "生产环境不允许前端直连 API Key，必须走服务端代理，否则密钥泄露风险太高。", "now_offset_days": 2, "expected_total": 0}
