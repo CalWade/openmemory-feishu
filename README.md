@@ -46,6 +46,7 @@ npm run dev -- schema:check
 
 # 加载 smoke benchmark 数据集
 npm run dev -- eval --smoke
+npm run dev -- eval --core
 
 # 当前 add / recall 仍是 dry-run mock
 npm run dev -- add --text "最终决定使用 PostgreSQL，不使用 MongoDB" --project kairos --type decision --subject database_selection
@@ -215,6 +216,7 @@ memoryops/
 - [x] Candidate Segment Pipeline 第四步：Context Windowing + Denoising
 - [x] Decision Extractor baseline：结构化抽取决策/规则/风险/工作流
 - [x] DecisionCandidate 写入 MemoryAtom 并支持反向召回
+- [x] 核心评测 runner：决策抽取 / 矛盾更新 / 召回
 
 - [x] 项目方向确定
 - [x] GitHub 仓库初始化

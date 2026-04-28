@@ -5,6 +5,7 @@ import { MemoryAtomSchema } from "./memory/schema.js";
 import { createManualMemory } from "./memory/factory.js";
 import { MemoryStore } from "./memory/store.js";
 import { loadSmokeCases, summarizeSmokeCases } from "./eval/smoke.js";
+import { runAllCoreEvals, runConflictUpdateEval, runDecisionExtractionEval, runRecallEval } from "./eval/runner.js";
 import { createAtomFromFact, extractFacts, reconcileFact } from "./extractor/mockExtractor.js";
 import { normalizeFeishuChatExport } from "./candidate/feishuChatExport.js";
 import { segmentMessages } from "./candidate/segment.js";
@@ -292,11 +293,30 @@ program
 program
   .command("eval")
   .option("--smoke", "run smoke benchmark")
+  .option("--core", "run core benchmark: decision extraction + conflict update + recall")
+  .option("--suite <suite>", "run a specific suite: decision-extraction | conflict-update | recall")
   .description("Run benchmarks")
   .action((opts) => {
     if (opts.smoke) {
       const cases = loadSmokeCases();
       console.log(JSON.stringify({ ok: true, command: "eval", smoke: true, ...summarizeSmokeCases(cases) }, null, 2));
+      return;
+    }
+    if (opts.core) {
+      const results = runAllCoreEvals();
+      console.log(JSON.stringify({ ok: true, command: "eval", core: true, results }, null, 2));
+      return;
+    }
+    if (opts.suite) {
+      const result = opts.suite === "decision-extraction"
+        ? runDecisionExtractionEval()
+        : opts.suite === "conflict-update"
+          ? runConflictUpdateEval()
+          : opts.suite === "recall"
+            ? runRecallEval()
+            : undefined;
+      if (!result) throw new Error(`未知 suite: ${opts.suite}`);
+      console.log(JSON.stringify({ ok: true, command: "eval", result }, null, 2));
       return;
     }
     console.log(JSON.stringify({ ok: true, command: "eval", smoke: false, cases: 0 }, null, 2));
