@@ -141,7 +141,7 @@ type DecisionCandidate = {
 
 ## 6. 当前已实现
 
-截至目前，Kairos 已实现：
+截至 2026-04-28，Kairos 已实现并可运行：
 
 - CLI：`memoryops`；
 - MemoryAtom 类型与 Zod Schema；
@@ -152,25 +152,32 @@ type DecisionCandidate = {
 - 飞书会话导出解析：`normalize-chat-export`；
 - 候选片段 baseline：`segment-chat-export`；
 - 结构化决策抽取 baseline：`extract-decision`；
+- LLMDecisionExtractor 可选路径：`extract-decision --llm --fallback`，支持 OpenAI-compatible 接口；
 - DecisionCandidate → MemoryAtom 写入；
-- 核心评测：decision-extraction / conflict-update / recall；
-- Vitest 单元测试。
+- Recall 确定性格式化回答：能把最相关记忆整理为历史决策 / 风险 / 流程回答；
+- Decision Card 文本版：`decision-card <memory_id>`；
+- 飞书 Decision Card payload 预览：`decision-card <memory_id> --feishu-json`，只生成 JSON，不主动发送；
+- Remind 本地 MVP：按 `review_at <= --now` 查询到期风险记忆；
+- 一键本地端到端演示：`npm run demo:e2e`；
+- 核心评测：decision-extraction / conflict-update / recall / anti-interference / remind；
+- LLM 抽取显式评测：`eval --suite llm-decision-extraction`，不进入 core eval；
+- Vitest 单元测试与 TypeScript build。
 
 ---
 
-## 7. 当前未完成
+## 7. 当前边界
 
 必须明确：Kairos 目前仍是 MVP，不是成熟产品。
 
-当前缺口：
+当前真实边界：
 
-1. Decision Extractor 仍是规则 baseline，不是 LLM 版本；
+1. 默认 Decision Extractor 仍是规则 baseline；LLMDecisionExtractor 已有可选路径，但小型显式评测当前观测为 3/4 通过，存在超时样本，不能宣传为生产级抽取效果；
 2. Candidate Segment Pipeline 仍是输入清洗 baseline，不是核心智能算法；
-3. `recall` 目前是检索式回答，不是完整自然语言问答；
-4. `remind` 尚未真正实现；
-5. 历史决策卡片尚未接入飞书卡片；
+3. `recall` 是检索 + 确定性格式化回答，不是完整自然语言问答生成；
+4. `remind` 已有本地到期查询 MVP，但尚未实现 ack / snooze / 重复提醒控制 / 飞书推送；
+5. 历史决策卡片已有 CLI 文本版和飞书 payload 生成，但尚未真正发送飞书交互式卡片；
 6. 飞书接入目前依赖 OpenClaw 工具拉取 / 导出文档，Kairos CLI 尚未内置飞书 API OAuth 调用；
-7. Benchmark 数据集还很小，只能证明最小闭环可跑。
+7. Benchmark 数据集仍然很小，core eval 只有 26 个最小用例，只能证明最小闭环可跑，不能代表真实生产效果。
 
 ---
 
@@ -178,11 +185,12 @@ type DecisionCandidate = {
 
 接下来优先做：
 
-1. 扩充 Benchmark：抗干扰、矛盾更新、召回；
-2. 实现 `remind`：风险记忆复习提醒；
-3. 实现历史决策卡片文本输出；
-4. 稳定飞书会话导出 → CLI → recall 的演示链路；
-5. 写清楚当前能力边界，避免夸大。
+1. 修正 LLM 路径稳定性：缩短 prompt、优化 timeout/retry、扩大真实样本评测；
+2. 完善 Remind 生命周期：ack / snooze / 重复提醒控制；
+3. 安全接入飞书卡片推送：复用现有 `--feishu-json` payload，但发送前必须确认对象和内容；
+4. 扩充 Benchmark：真实飞书导出片段、抗干扰、矛盾更新、召回质量；
+5. 稳定飞书会话导出 → CLI → recall / decision-card 的演示链路；
+6. 持续写清楚当前能力边界，避免夸大。
 
 ---
 
