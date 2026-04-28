@@ -116,6 +116,9 @@ export type MemoryAtom = {
   review_at?: string;
   access_count: number;
   last_accessed_at?: string;
+
+  /** 结构化扩展字段，如 decision reasons / rejected_options / aliases 等 */
+  metadata?: Record<string, unknown>;
 };
 
 export type CandidateFact = {

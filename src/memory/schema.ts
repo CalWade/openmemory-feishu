@@ -91,6 +91,7 @@ export const MemoryAtomSchema = z.object({
   review_at: z.string().datetime({ offset: true }).optional(),
   access_count: z.number().int().min(0),
   last_accessed_at: z.string().datetime({ offset: true }).optional(),
+  metadata: z.record(z.string(), z.unknown()).optional(),
 });
 
 export const CandidateFactSchema = z.object({

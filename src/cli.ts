@@ -11,6 +11,7 @@ import { segmentMessages } from "./candidate/segment.js";
 import { mergeAdjacentScoredSegments, scoreSegments } from "./candidate/salience.js";
 import { buildCandidateWindows } from "./candidate/window.js";
 import { extractDecisionBaseline } from "./extractor/ruleDecisionExtractor.js";
+import { extractionToMemoryAtom } from "./extractor/toMemoryAtom.js";
 
 const program = new Command();
 
@@ -33,10 +34,14 @@ program
   .description("从文本或候选窗口中抽取结构化决策/规则/风险/工作流（baseline）")
   .option("--text <text>", "直接输入 denoised_text")
   .option("--file <path>", "从文件读取 denoised_text")
+  .option("--project <project>", "项目名")
+  .option("--write", "将抽取结果写入 Memory Store")
+  .option("--db <path>", "SQLite 数据库路径")
+  .option("--events <path>", "JSONL event log 路径")
   .action((opts) => {
     if (!opts.text && !opts.file) throw new Error("请提供 --text 或 --file");
     const text = opts.text ?? readFileSync(opts.file, "utf8");
-    const result = extractDecisionBaseline({
+    const window = {
       id: "win_cli",
       segment_id: "seg_cli",
       topic_hint: "manual",
@@ -47,8 +52,11 @@ program
       evidence_message_ids: ["manual_input"],
       dropped_message_ids: [],
       estimated_tokens: Math.ceil(text.length / 2),
-    });
-    console.log(JSON.stringify({ ok: true, command: "extract-decision", result }, null, 2));
+    };
+    const result = extractDecisionBaseline(window);
+    const atom = extractionToMemoryAtom(result, window, opts.project);
+    const saved = opts.write && atom ? storeFromOptions(opts).upsert(atom) : undefined;
+    console.log(JSON.stringify({ ok: true, command: "extract-decision", result, atom, saved }, null, 2));
   });
 
 program
