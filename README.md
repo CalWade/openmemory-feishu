@@ -209,6 +209,7 @@ memoryops/
 
 - [x] Candidate Segment Pipeline 第一步：Message Normalization 标准消息结构
 - [x] Candidate Segment Pipeline 第二步：Conversation Segmentation 对话切分
+- [x] Candidate Segment Pipeline 第三步：Salience Scoring + Adjacent Segment Merge
 
 - [x] 项目方向确定
 - [x] GitHub 仓库初始化

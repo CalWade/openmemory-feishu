@@ -8,6 +8,7 @@ import { loadSmokeCases, summarizeSmokeCases } from "./eval/smoke.js";
 import { createAtomFromFact, extractFacts, reconcileFact } from "./extractor/mockExtractor.js";
 import { normalizeFeishuChatExport } from "./candidate/feishuChatExport.js";
 import { segmentMessages } from "./candidate/segment.js";
+import { mergeAdjacentScoredSegments, scoreSegments } from "./candidate/salience.js";
 
 const program = new Command();
 
@@ -37,19 +38,24 @@ program
       docToken: opts.docToken,
       chatId: opts.chatId,
     });
-    const segments = segmentMessages(messages, {
+    const initialSegments = segmentMessages(messages, {
       maxGapMs: Number(opts.maxGapMinutes) * 60 * 1000,
     });
+    const segments = mergeAdjacentScoredSegments(scoreSegments(initialSegments));
     console.log(JSON.stringify({
       ok: true,
       command: "segment-chat-export",
       message_total: messages.length,
+      initial_segment_total: initialSegments.length,
       segment_total: segments.length,
       segments: segments.map((segment) => ({
         id: segment.id,
         topic_hint: segment.topic_hint,
         message_count: segment.messages.length,
         boundary_reasons: segment.boundary_reasons,
+        salience_score: segment.salience_score,
+        salience_signals: segment.salience_signals,
+        domain_hint: segment.domain_hint,
         start_time: segment.start_time,
         end_time: segment.end_time,
         preview: segment.messages.map((message) => `${message.sender}: ${message.text}`).slice(0, 8),
