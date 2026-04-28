@@ -9,6 +9,7 @@ import { createAtomFromFact, extractFacts, reconcileFact } from "./extractor/moc
 import { normalizeFeishuChatExport } from "./candidate/feishuChatExport.js";
 import { segmentMessages } from "./candidate/segment.js";
 import { mergeAdjacentScoredSegments, scoreSegments } from "./candidate/salience.js";
+import { buildCandidateWindows } from "./candidate/window.js";
 
 const program = new Command();
 
@@ -42,12 +43,14 @@ program
       maxGapMs: Number(opts.maxGapMinutes) * 60 * 1000,
     });
     const segments = mergeAdjacentScoredSegments(scoreSegments(initialSegments));
+    const windows = buildCandidateWindows(segments);
     console.log(JSON.stringify({
       ok: true,
       command: "segment-chat-export",
       message_total: messages.length,
       initial_segment_total: initialSegments.length,
       segment_total: segments.length,
+      candidate_window_total: windows.filter((window) => window.candidate_eligible).length,
       segments: segments.map((segment) => ({
         id: segment.id,
         topic_hint: segment.topic_hint,
@@ -59,6 +62,18 @@ program
         start_time: segment.start_time,
         end_time: segment.end_time,
         preview: segment.messages.map((message) => `${message.sender}: ${message.text}`).slice(0, 8),
+      })),
+      windows: windows.map((window) => ({
+        id: window.id,
+        segment_id: window.segment_id,
+        topic_hint: window.topic_hint,
+        candidate_eligible: window.candidate_eligible,
+        salience_score: window.salience_score,
+        salience_signals: window.salience_signals,
+        evidence_message_ids: window.evidence_message_ids,
+        dropped_message_ids: window.dropped_message_ids,
+        estimated_tokens: window.estimated_tokens,
+        denoised_text: window.denoised_text,
       })),
     }, null, 2));
   });
