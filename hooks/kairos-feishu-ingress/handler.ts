@@ -5,14 +5,23 @@ import { spawnSync } from "node:child_process";
 const handler = async (event: any) => {
   if (event?.type !== "message" || event?.action !== "received") return;
   const context = event.context ?? {};
-  const channel = String(context.channelId ?? context.metadata?.channel ?? "");
-  if (channel && !channel.includes("feishu") && context.metadata?.provider !== "feishu") return;
-
-  const text = String(context.content ?? context.bodyForAgent ?? "").trim();
-  if (!text) return;
-
   const workspaceDir = context.workspaceDir ?? process.cwd();
   const repoDir = resolveRepoDir(workspaceDir);
+  const channel = String(context.channelId ?? context.metadata?.channel ?? context.metadata?.provider ?? "");
+  log(repoDir, {
+    at: new Date().toISOString(),
+    phase: "received",
+    type: event.type,
+    action: event.action,
+    channel,
+    context_keys: Object.keys(context),
+    metadata_keys: context.metadata ? Object.keys(context.metadata) : [],
+    content_preview: String(context.content ?? context.bodyForAgent ?? context.text ?? "").slice(0, 80),
+  });
+  if (channel && !channel.includes("feishu") && context.metadata?.provider !== "feishu" && context.metadata?.channel !== "feishu") return;
+
+  const text = String(context.content ?? context.bodyForAgent ?? context.text ?? "").trim();
+  if (!text) return;
   const args = [
     "run", "-s", "dev", "--",
     "feishu-workflow",
@@ -33,6 +42,7 @@ const handler = async (event: any) => {
     sessionKey: event.sessionKey,
     channel,
     status: result.status,
+    error: result.error ? String(result.error).slice(0, 500) : undefined,
     stdout: safeJson(result.stdout),
     stderr: result.stderr?.slice(0, 500),
   });
@@ -47,7 +57,12 @@ function log(workspaceDir: string, item: unknown) {
 function resolveRepoDir(workspaceDir: string): string {
   if (process.env.KAIROS_REPO_DIR) return process.env.KAIROS_REPO_DIR;
   const normalized = workspaceDir.replace(/\/$/, "");
-  const candidates = [normalized, `${normalized}/memoryops`, process.cwd()];
+  const candidates = [
+    "/home/ecs-user/.openclaw/workspace/memoryops",
+    `${normalized}/memoryops`,
+    normalized,
+    process.cwd(),
+  ];
   for (const candidate of candidates) {
     if (existsSync(resolve(candidate, "package.json"))) return candidate;
   }

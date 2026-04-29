@@ -34,5 +34,10 @@
     "better-sqlite3": "^12.9.0",
     "commander": "latest",
     "zod": "latest"
+  },
+  "openclaw": {
+    "hooks": {
+      "kairos-feishu-ingress": "hooks/kairos-feishu-ingress"
+    }
   }
 }
