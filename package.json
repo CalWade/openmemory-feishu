@@ -46,6 +46,8 @@
     "hooks",
     "README.md",
     "LICENSE",
-    "package.json"
+    "package.json",
+    "INSTALL.md",
+    "docs/openclaw-hook-install.md"
   ]
 }
