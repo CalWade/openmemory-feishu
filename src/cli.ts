@@ -19,7 +19,7 @@ import { formatRecallAnswer } from "./memory/recallFormatter.js";
 import { redactWebhookUrl, sendFeishuInteractiveWebhook } from "./feishuWebhook.js";
 import { loadEnvValue } from "./llm/config.js";
 import { runFeishuWorkflow } from "./workflow/feishuWorkflow.js";
-import { checkLarkCliStatus } from "./larkCliAdapter.js";
+import { buildLarkCliPlan, checkLarkCliStatus } from "./larkCliAdapter.js";
 
 const program = new Command();
 
@@ -48,6 +48,21 @@ larkCli
   .description("检查官方 lark-cli 是否安装及认证状态")
   .action((opts) => {
     console.log(JSON.stringify({ ok: true, command: "lark-cli status", status: checkLarkCliStatus({ checkAuth: !!opts.checkAuth }) }, null, 2));
+  });
+
+
+larkCli
+  .command("plan")
+  .requiredOption("--purpose <purpose>", "chat_messages/message_search/doc_fetch/event_consume")
+  .option("--chat-id <chatId>", "飞书 chat_id")
+  .option("--query <query>", "搜索关键词")
+  .option("--doc-url <url>", "飞书文档 URL")
+  .option("--event-key <key>", "lark-cli event key")
+  .option("--since <time>", "起始时间")
+  .option("--until <time>", "结束时间")
+  .description("生成 lark-cli 数据获取命令计划（只输出，不执行）")
+  .action((opts) => {
+    console.log(JSON.stringify({ ok: true, command: "lark-cli plan", plan: buildLarkCliPlan({ purpose: opts.purpose, chatId: opts.chatId, query: opts.query, docUrl: opts.docUrl, eventKey: opts.eventKey, since: opts.since, until: opts.until }) }, null, 2));
   });
 
 program
