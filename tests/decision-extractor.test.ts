@@ -43,6 +43,11 @@ describe("extractDecisionBaseline", () => {
     expect(result.aliases).toContain("中文乱码");
   });
 
+  it("提问不会被当成存储决策", () => {
+    const result = extractDecisionBaseline(win("要不我们还是用 PostgreSQL？"));
+    expect(result.kind).toBe("none");
+  });
+
   it("低价值窗口返回 none", () => {
     const result = extractDecisionBaseline(win("黄威健：ok\n韦贺文：哈哈"));
     expect(result.kind).toBe("none");

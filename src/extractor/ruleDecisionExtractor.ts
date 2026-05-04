@@ -90,9 +90,11 @@ export function extractDecisionBaseline(window: CandidateWindow): ExtractionResu
 }
 
 function isUnresolvedQuestion(text: string): boolean {
-  return /[？?]|会不会|要不要|能不能|是否/.test(text)
-    && /还没定|未定|再讨论|待确认|之后再说|晚上再讨论/.test(text)
-    && !/最终|决定|选择|采用|使用|不使用|不允许|必须|改为|先按|同意/.test(text);
+  const asksDecision = /[？?]|会不会|要不要|要不|能不能|是否|可不可以|能否/.test(text);
+  if (!asksDecision) return false;
+  const hasFinalCue = /最终|决定|已定|结论|选择|采用|使用|不使用|不允许|必须|改为|先按|同意/.test(text);
+  if (!hasFinalCue) return true;
+  return /还没定|未定|再讨论|待确认|之后再说|晚上再讨论/.test(text);
 }
 
 function none(evidence: string[], reasoning: string): ExtractionResult {
