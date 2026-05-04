@@ -45,9 +45,10 @@ const larkCli = program
 larkCli
   .command("status")
   .option("--check-auth", "同时检查 lark-cli auth status（不发起登录）")
+  .option("--profile <profile>", "lark-cli profile 名称")
   .description("检查官方 lark-cli 是否安装及认证状态")
   .action((opts) => {
-    console.log(JSON.stringify({ ok: true, command: "lark-cli status", status: checkLarkCliStatus({ checkAuth: !!opts.checkAuth }) }, null, 2));
+    console.log(JSON.stringify({ ok: true, command: "lark-cli status", status: checkLarkCliStatus({ checkAuth: !!opts.checkAuth, profile: opts.profile }) }, null, 2));
   });
 
 
@@ -57,9 +58,10 @@ larkCli
 larkCli
   .command("preflight")
   .requiredOption("--purpose <purpose>", "chat_messages/message_search/doc_fetch/event_consume")
+  .option("--profile <profile>", "lark-cli profile 名称")
   .description("检查某类 lark-cli 数据获取所需授权是否满足")
   .action((opts) => {
-    console.log(JSON.stringify({ ok: true, command: "lark-cli preflight", preflight: preflightLarkCliPurpose(opts.purpose) }, null, 2));
+    console.log(JSON.stringify({ ok: true, command: "lark-cli preflight", preflight: preflightLarkCliPurpose(opts.purpose, { profile: opts.profile }) }, null, 2));
   });
 
 larkCli
@@ -107,9 +109,10 @@ larkCli
   .option("--event-key <key>", "lark-cli event key")
   .option("--since <time>", "起始时间")
   .option("--until <time>", "结束时间")
+  .option("--profile <profile>", "lark-cli profile 名称")
   .description("生成 lark-cli 数据获取命令计划（只输出，不执行）")
   .action((opts) => {
-    console.log(JSON.stringify({ ok: true, command: "lark-cli plan", plan: buildLarkCliPlan({ purpose: opts.purpose, chatId: opts.chatId, query: opts.query, docUrl: opts.docUrl, eventKey: opts.eventKey, since: opts.since, until: opts.until }) }, null, 2));
+    console.log(JSON.stringify({ ok: true, command: "lark-cli plan", plan: buildLarkCliPlan({ purpose: opts.purpose, chatId: opts.chatId, query: opts.query, docUrl: opts.docUrl, eventKey: opts.eventKey, since: opts.since, until: opts.until, profile: opts.profile }) }, null, 2));
   });
 
 program

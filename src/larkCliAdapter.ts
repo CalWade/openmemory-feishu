@@ -15,7 +15,7 @@ export type LarkCliPlan = {
   notes: string[];
 };
 
-export function checkLarkCliStatus(options: { checkAuth?: boolean } = {}): LarkCliStatus {
+export function checkLarkCliStatus(options: { checkAuth?: boolean; profile?: string } = {}): LarkCliStatus {
   const version = spawnSync("lark-cli", ["--version"], { encoding: "utf8", timeout: 10_000 });
   if (version.error || version.status !== 0) {
     return {
@@ -33,10 +33,11 @@ export function checkLarkCliStatus(options: { checkAuth?: boolean } = {}): LarkC
 
   if (!options.checkAuth) return status;
 
-  const auth = spawnSync("lark-cli", ["auth", "status"], { encoding: "utf8", timeout: 15_000 });
+  const authArgs = ["auth", "status", ...(options.profile ? ["--profile", options.profile] : [])];
+  const auth = spawnSync("lark-cli", authArgs, { encoding: "utf8", timeout: 15_000 });
   status.auth_checked = true;
   status.auth_ok = auth.status === 0 && !/not logged|未登录|no credential|no auth/i.test(`${auth.stdout}\n${auth.stderr}`);
-  status.auth_summary = (auth.stdout || auth.stderr || "").trim().slice(0, 1000);
+  status.auth_summary = (auth.stdout || auth.stderr || "").trim();
   return status;
 }
 
@@ -48,6 +49,7 @@ export function buildLarkCliPlan(input: {
   eventKey?: string;
   since?: string;
   until?: string;
+  profile?: string;
 }): LarkCliPlan {
   if (input.purpose === "chat_messages") {
     const command = ["lark-cli", "im", "+chat-messages-list"];
@@ -55,6 +57,7 @@ export function buildLarkCliPlan(input: {
     if (input.since) command.push("--start-time", input.since);
     if (input.until) command.push("--end-time", input.until);
     command.push("--format", "json");
+    if (input.profile) command.push("--profile", input.profile);
     return { purpose: input.purpose, command, notes: ["需要 lark-cli 已登录并具备消息读取权限", "输出 JSON 后进入 Kairos normalize/extract pipeline"] };
   }
   if (input.purpose === "message_search") {
@@ -62,12 +65,14 @@ export function buildLarkCliPlan(input: {
     if (input.query) command.push("--query", input.query);
     if (input.chatId) command.push("--chat-id", input.chatId);
     command.push("--format", "json");
+    if (input.profile) command.push("--profile", input.profile);
     return { purpose: input.purpose, command, notes: ["适合回补历史项目讨论", "搜索结果需再经过 Kairos salience 和 extractor"] };
   }
   if (input.purpose === "doc_fetch") {
     const command = ["lark-cli", "docs", "+fetch"];
     if (input.docUrl) command.push("--url", input.docUrl);
     command.push("--format", "json");
+    if (input.profile) command.push("--profile", input.profile);
     return { purpose: input.purpose, command, notes: ["用于飞书文档/Wiki 内容进入 Kairos", "不要把 lark-cli 输出直接当记忆，仍需结构化抽取"] };
   }
   const command = ["lark-cli", "event", "consume", input.eventKey ?? "<EventKey>"];
@@ -95,8 +100,8 @@ export type LarkCliPreflight = {
   notes: string[];
 };
 
-export function preflightLarkCliPurpose(purpose: LarkCliPurpose): LarkCliPreflight {
-  const status = checkLarkCliStatus({ checkAuth: true });
+export function preflightLarkCliPurpose(purpose: LarkCliPurpose, options: { profile?: string } = {}): LarkCliPreflight {
+  const status = checkLarkCliStatus({ checkAuth: true, profile: options.profile });
   const granted = parseGrantedScopes(status.auth_summary ?? "");
   const required = REQUIRED_SCOPES[purpose];
   const missing = required.filter((scope) => !granted.includes(scope));
@@ -107,7 +112,7 @@ export function preflightLarkCliPurpose(purpose: LarkCliPurpose): LarkCliPreflig
     granted_scopes: granted,
     required_scopes: required,
     missing_scopes: missing,
-    recommended_command: missing.length ? ["lark-cli", "auth", "login", "--scope", missing.join(" ")] : undefined,
+    recommended_command: missing.length ? ["lark-cli", "auth", "login", "--scope", missing.join(" "), ...(options.profile ? ["--profile", options.profile] : [])] : undefined,
     notes: buildPreflightNotes(purpose, status.installed, !!status.auth_ok, missing),
   };
 }

@@ -13,6 +13,12 @@ describe("lark-cli adapter", () => {
     expect(buildLarkCliPlan({ purpose: "doc_fetch", docUrl: "https://example.feishu.cn/wiki/xxx" }).command).toContain("+fetch");
   });
 
+  it("profile in plan", () => {
+    const command = buildLarkCliPlan({ purpose: "chat_messages", chatId: "oc_x", profile: "kairos-alt" }).command;
+    expect(command).toContain("--profile");
+    expect(command).toContain("kairos-alt");
+  });
+
   it("preflightLarkCliPurpose can report missing scopes", () => {
     const preflight = preflightLarkCliPurpose("message_search");
     expect(preflight.required_scopes).toContain("search:message");
