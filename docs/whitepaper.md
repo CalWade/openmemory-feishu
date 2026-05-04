@@ -141,26 +141,30 @@ type DecisionCandidate = {
 
 ## 6. 当前已实现
 
-截至 2026-04-28，Kairos 已实现并可运行：
+截至 2026-05-04，Kairos 已实现并可运行：
 
 - CLI：`memoryops`；
 - MemoryAtom 类型与 Zod Schema；
-- SQLite Store；
+- SQLite Store 与 JSONL portable store；
 - JSONL Event Log；
 - `add / search / recall / list / history`；
 - `supersede` 非损失效覆盖；
 - 飞书会话导出解析：`normalize-chat-export`；
 - 候选片段 baseline：`segment-chat-export`；
 - 结构化决策抽取 baseline：`extract-decision`；
-- LLMDecisionExtractor 可选路径：`extract-decision --llm --fallback`，支持 OpenAI-compatible 接口；
+- LLMDecisionExtractor 可选路径：`extract-decision --llm --fallback`；
 - DecisionCandidate → MemoryAtom 写入；
-- Recall 确定性格式化回答：能把最相关记忆整理为历史决策 / 风险 / 流程回答；
-- Decision Card 文本版：`decision-card <memory_id>`；
-- 飞书 Decision Card payload 预览：`decision-card <memory_id> --feishu-json`，以及显式 webhook 发送路径：`--send-feishu-webhook`；
-- Remind 本地 MVP：按 `review_at <= --now` 查询到期风险记忆；
+- Recall 确定性格式化回答；
+- Decision Card 文本版、JSON 版、飞书 interactive card payload；
+- 飞书机器人 webhook 显式发送路径；
+- Remind 本地 MVP：到期查询、ack、snooze；
+- OpenClaw hook pack：`hooks/kairos-feishu-ingress`；
+- 免编译插件分发：hook 默认走 JSONL portable store；
+- 官方 lark-cli 数据入口：`ingest-chat`、`e2e-chat`、`doctor`、`setup-wizard`；
+- 真实飞书群消息 e2e：lark-cli 按 `chat_id` 读取真实群消息，Kairos 抽取记忆，后续提问触发 `push_decision_card`；
 - 一键本地端到端演示：`npm run demo:e2e`；
-- 核心评测：decision-extraction / conflict-update / recall / anti-interference / remind；
-- LLM 抽取显式评测：`eval --suite llm-decision-extraction`，不进入 core eval；
+- 真实群消息演示：`KAIROS_DEMO_CHAT_ID=<oc_xxx> npm run demo:lark-cli-chat`；
+- 核心评测：decision-extraction / conflict-update / recall / anti-interference / remind / feishu-workflow；
 - Vitest 单元测试与 TypeScript build。
 
 ---
@@ -171,13 +175,14 @@ type DecisionCandidate = {
 
 当前真实边界：
 
-1. 默认 Decision Extractor 仍是规则 baseline；LLMDecisionExtractor 已有可选路径，但小型显式评测当前观测为 3/4 通过，存在超时样本，不能宣传为生产级抽取效果；
+1. 默认 Decision Extractor 仍是规则 baseline；LLMDecisionExtractor 已有可选路径，但不能宣传为生产级抽取效果；
 2. Candidate Segment Pipeline 仍是输入清洗 baseline，不是核心智能算法；
 3. `recall` 是检索 + 确定性格式化回答，不是完整自然语言问答生成；
 4. `remind` 已有本地到期查询、ack、snooze MVP，但尚未实现飞书推送和周期性自动投递；
-5. 历史决策卡片已有 CLI 文本版、飞书 payload 生成和 webhook 发送路径，但尚未内置飞书 OAuth；
-6. 飞书接入目前依赖 OpenClaw 工具拉取 / 导出文档，Kairos CLI 尚未内置飞书 API OAuth 调用；
-7. Benchmark 数据集仍然很小，core eval 只有 26 个最小用例，只能证明最小闭环可跑，不能代表真实生产效果。
+5. 历史决策卡片已有 CLI 文本版、飞书 payload 生成和 webhook 显式发送路径，但默认不自动发送外部消息；
+6. 飞书数据读取主路径依赖官方 `lark-cli` 和用户授权 profile；Kairos 不自建飞书 OAuth Server；
+7. 全局消息搜索仍缺 `search:message`，但主 Demo 使用 `chat_id` 按群读取，不受影响；
+8. Benchmark 数据集仍然较小，只能证明最小闭环可跑，不能代表真实生产效果。
 
 ---
 
@@ -185,12 +190,11 @@ type DecisionCandidate = {
 
 接下来优先做：
 
-1. 修正 LLM 路径稳定性：缩短 prompt、优化 timeout/retry、扩大真实样本评测；
-2. 完善 Remind 投递链路：飞书推送、周期性自动投递、提醒策略配置；
-3. 完善飞书卡片推送：当前已有 webhook 发送路径，后续可接入 OAuth / OpenClaw 演示流；
-4. 扩充 Benchmark：真实飞书导出片段、抗干扰、矛盾更新、召回质量；
-5. 稳定飞书会话导出 → CLI → recall / decision-card 的演示链路；
-6. 持续写清楚当前能力边界，避免夸大。
+1. 完成最终复赛 Demo 录屏：真实飞书群消息 → lark-cli → Kairos → `push_decision_card`；
+2. 打包最终 `.tgz`，验证 `dist/`、`hooks/`、`OPENCLAW.md`、`openclaw.setup.json` 和 runbook 均进入包；
+3. 扩充 Benchmark：增加真实飞书片段、抗干扰样本、误抽样本和召回质量用例；
+4. 优化抽取质量：继续减少真实群消息中的配置链接、机器人卡片、确认语等噪声误抽；
+5. 持续写清楚当前能力边界，避免把 MVP 说成生产级系统。
 
 ---
 

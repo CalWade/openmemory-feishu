@@ -1,5 +1,70 @@
 # Kairos Demo Script
 
+## 推荐 Demo：真实飞书群消息 + lark-cli
+
+这是当前最推荐的复赛 Demo 主线，因为它使用真实飞书群消息，而不是纯本地 mock。
+
+### 前置条件
+
+```bash
+npm install -g @larksuite/cli
+lark-cli config init --new --name kairos-alt
+lark-cli auth login --recommend --profile kairos-alt
+memoryops doctor --profile kairos-alt --pretty
+```
+
+需要用户提供目标群 `chat_id`，格式类似 `oc_xxx`。
+
+### 群里准备测试消息
+
+在目标飞书群中发送一条明确历史决策：
+
+```text
+最终决定：MVP 阶段暂时不用 PostgreSQL，先用 SQLite，因为部署成本更低。
+```
+
+再发送一条后续讨论触发文本：
+
+```text
+要不我们还是用 PostgreSQL？
+```
+
+### 一键验收
+
+```bash
+memoryops doctor \
+  --profile kairos-alt \
+  --chat-id <oc_xxx> \
+  --e2e \
+  --pretty
+```
+
+或者使用 npm script：
+
+```bash
+KAIROS_DEMO_CHAT_ID=<oc_xxx> npm run demo:lark-cli-chat
+```
+
+### 预期结果
+
+```text
+✅ read chat messages
+✅ e2e chat -> memory -> workflow
+workflow_action = push_decision_card
+```
+
+### 讲解口径
+
+```text
+lark-cli 负责官方飞书数据获取；
+OpenClaw 负责插件安装和实时触发入口；
+Kairos 负责长期记忆抽取、存储、召回和 Decision Card。
+```
+
+注意：`search:message` 缺失不影响主流程，因为 Demo 采用 `chat_id` 按群读取。
+
+---
+
 ## 一键端到端 Demo
 
 推荐先运行本地端到端脚本，确认演示闭环可用：
@@ -17,7 +82,7 @@ npm run demo:e2e
 5. 写入风险记忆、查询到期提醒，并演示 snooze / ack；
 6. 运行核心评测。
 
-说明：这是本地 CLI 可运行闭环；飞书交互式卡片和提醒推送尚未实现。
+说明：这是本地 CLI 可运行闭环；真实飞书群消息主线见上方 lark-cli Demo。飞书提醒推送仍未实现。
 
 ---
 

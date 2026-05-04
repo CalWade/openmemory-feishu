@@ -1,55 +1,84 @@
 # Kairos 当前项目状态
 
-更新时间：2026-04-28
+更新时间：2026-05-04
+
+## 当前定位
+
+Kairos 是面向飞书与 OpenClaw 的企业级项目决策记忆引擎。当前最稳的架构是：
+
+```text
+lark-cli：官方飞书数据入口，负责 OAuth、scope、API 调用和 JSON 输出
+OpenClaw：插件安装、hook 生命周期、实时消息入口和 Agent 编排
+Kairos：Memory Engine，负责抽取、存储、召回、冲突更新、提醒、卡片和评测
+```
 
 ## 已完成且可运行
 
 - CLI：`memoryops`
 - MemoryAtom v0.2 类型与 Zod Schema
-- SQLite Memory Store
-- JSONL portable store：OpenClaw hook 默认使用，避免 native SQLite 编译依赖
+- SQLite Memory Store（本地开发）
+- JSONL portable store（OpenClaw hook / 免编译分发默认后端）
 - JSONL Event Log
 - `add / search / recall / list / history`
 - `supersede` 非损失效覆盖
 - 飞书会话导出解析：`normalize-chat-export`
 - 候选片段 baseline：`segment-chat-export`
 - 结构化决策抽取 baseline：`extract-decision`
-- LLMDecisionExtractor 可选路径：`extract-decision --llm --fallback`，读取本地 `.env`，支持 OpenAI-compatible 接口；另有显式 `eval --suite llm-decision-extraction`，不进入 core eval
-- Decision Card 文本版：`decision-card <memory_id>`，可把决策、理由、被否方案和证据渲染为 Markdown
-- OpenClaw 飞书入口 Hook：`hooks/kairos-feishu-ingress` 监听 `message:received` 并调用 `feishu-workflow`；默认只记录 workflow 输出，可通过环境变量开启 webhook 发送
-- 飞书 Decision Card payload 预览：`decision-card <memory_id> --feishu-json`，只生成 interactive card JSON；另支持 `--send-feishu-webhook` 通过飞书机器人 webhook 真实发送，必须显式提供 webhook
-- Recall 确定性格式化回答：将最相关记忆整理为历史决策/风险/流程回答，并提示可运行的 decision-card 命令
-- DecisionCandidate → MemoryAtom 写入
+- LLMDecisionExtractor 可选路径：`extract-decision --llm --fallback`，不作为稳定主链路
+- Decision Card：Markdown、结构化 JSON、飞书 interactive card payload
+- 飞书机器人 webhook 显式发送路径：`decision-card <id> --send-feishu-webhook`
+- Recall 确定性格式化回答
+- Remind 本地生命周期：`remind` / `remind snooze` / `remind ack`
+- OpenClaw hook pack：`hooks/kairos-feishu-ingress`
+- 免编译插件分发：hook 默认走 JSONL，避免 `better-sqlite3` native binding 问题
+- lark-cli 官方数据入口：`status / plan / preflight / ingest-file / ingest-chat / e2e-chat`
+- 安装诊断与向导：`doctor`、`doctor --pretty`、`setup-wizard`
+- Demo 脚本：`npm run demo:e2e`、`npm run demo:feishu-workflow`、`npm run demo:lark-cli-chat`
+- 自描述安装文件：`OPENCLAW.md`、`openclaw.setup.json`、`docs/lark-cli-runbook.md`、`docs/openclaw-agent-checklist.md`
 - 核心评测 runner：decision-extraction / conflict-update / recall / anti-interference / remind / feishu-workflow
-- Vitest 单元测试
+- Vitest 单元测试与 TypeScript build
+
+## 已验证的真实链路
+
+截至 2026-05-04，已用真实飞书测试群完成：
+
+```text
+真实飞书群消息
+→ 官方 lark-cli 按 chat_id 读取
+→ Kairos 解析 JSON 并过滤机器人卡片/授权链接等噪声
+→ 抽取 MemoryAtom
+→ 后续提问“要不我们还是用 PostgreSQL？”
+→ feishu-workflow 输出 push_decision_card
+```
+
+实测命令：
+
+```bash
+memoryops doctor --profile kairos-alt --chat-id <oc_xxx> --e2e --pretty
+```
+
+当前验收结果：
+
+```text
+read chat messages ✅
+e2e chat -> memory -> workflow ✅
+workflow_action = push_decision_card
+```
 
 ## 真实边界
 
-- Decision Extractor 默认仍是规则 baseline；LLMDecisionExtractor 已有可选路径和小型显式评测，当前观测 3/4 通过且存在超时样本，不能按生产效果宣传。
-- Candidate Segment Pipeline 仍是输入清洗 baseline，不应作为核心智能卖点。
-- 飞书接收入口确定采用 OpenClaw hook/外挂 Agent 模式：OpenClaw 负责接收 `message:received`，Kairos 负责工作流判断；Kairos CLI 不自建飞书事件服务器，也尚未内置 OAuth。
-- `recall` 目前是检索 + 确定性格式化回答，不是完整自然语言问答生成。
-- 遗忘提醒 `remind` 已有本地 MVP：支持按 `review_at <= --now` 查询到期记忆，并支持 `ack` / `snooze`；尚未实现飞书推送和周期性自动投递。
-- 历史决策卡片已有 CLI 文本版、飞书 payload 生成和 webhook 发送路径；尚未实现 Kairos CLI 内置飞书 OAuth。
-
-## 当前主线
-
-Kairos 当前聚焦：项目决策记忆引擎。
-
-```text
-飞书会话导出/项目讨论文本
-→ 候选窗口
-→ 决策/规则/风险结构化抽取
-→ MemoryAtom
-→ 检索召回
-→ 矛盾更新
-→ Benchmark 自证
-```
+- 默认 Decision Extractor 仍是规则 baseline；LLMDecisionExtractor 只是增强路径，当前不宣传为生产级抽取效果。
+- Candidate Segment Pipeline 是输入清洗 baseline，不是核心智能算法卖点。
+- `recall` 是检索 + 确定性格式化回答，不是完整生成式 QA。
+- `remind` 仍是本地生命周期 MVP，尚未做飞书周期性投递。
+- OpenClaw hook 默认只记录 workflow 输出，不自动发卡；自动发送需要显式配置 `KAIROS_HOOK_SEND_FEISHU=1` 和 webhook。
+- lark-cli 全局消息搜索仍缺 `search:message`，但主路径不依赖它；当前主路径是按 `chat_id` 读取群消息。
+- Benchmark 规模仍然较小，当前结果只能说明 MVP 闭环可跑，不代表真实生产效果。
 
 ## 当前最重要缺口
 
-1. LLMDecisionExtractor：当前已有可选路径和小型显式评测，下一步需要扩大真实样本、优化超时/重试和失败回退策略。
-2. Remind / Forgetting：当前已有本地到期查询、ack、snooze；仍需飞书推送和周期性自动投递。
-3. Decision Card：CLI 文本版、飞书 payload 和 webhook 发送路径已完成；下一步是接入 OAuth 或 OpenClaw 演示流。
-4. Benchmark 扩充：当前 core eval 为 30 个最小用例，仍需扩到可展示数据集。
-5. 飞书端演示闭环：至少完成导出文档 → CLI → recall 的稳定 demo。
+1. 最终复赛材料：需要更新演示脚本、录屏讲稿和提交说明。
+2. Benchmark 扩充：需要更多真实飞书片段、抗干扰样本和误抽样本。
+3. 抽取质量：继续减少真实群消息中的误抽和漏抽。
+4. 飞书回推：当前有 webhook 显式发送路径，但默认不开启；如要演示自动发卡，需要单独配置安全开关。
+5. 文档/Wiki 入口：lark-cli 已可作为官方入口，尚未把 `docs/wiki` 数据读取做成主线 demo。
