@@ -1,6 +1,6 @@
 # Kairos OpenClaw 自动安装说明
 
-当用户把这个 GitHub 仓库链接发给 OpenClaw/Agent 时，请按本文件执行。目标是让用户尽量只参与必要授权，不手动拼命令。
+当用户把这个 GitHub 仓库链接发给 OpenClaw/Agent 时，请按本文件执行。目标是让用户尽量只参与必要授权，不手动拼命令。详细逐步手册见 `docs/lark-cli-runbook.md`，快速核对清单见 `docs/openclaw-agent-checklist.md`。
 
 ## 0. 安全边界
 

@@ -45,7 +45,8 @@
       "OPENCLAW.md",
       "INSTALL.md",
       "docs/lark-cli-runbook.md",
-      "docs/openclaw-hook-install.md"
+      "docs/openclaw-hook-install.md",
+      "docs/openclaw-agent-checklist.md"
     ]
   },
   "files": [
@@ -58,6 +59,7 @@
     "docs/openclaw-hook-install.md",
     "OPENCLAW.md",
     "openclaw.setup.json",
-    "docs/lark-cli-runbook.md"
+    "docs/lark-cli-runbook.md",
+    "docs/openclaw-agent-checklist.md"
   ]
 }
