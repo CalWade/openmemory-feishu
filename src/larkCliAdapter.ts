@@ -244,3 +244,8 @@ export function runLarkCliJson(args: string[]): unknown {
   }
   return JSON.parse(result.stdout);
 }
+
+export function runLarkCliText(args: string[], options: { timeoutMs?: number } = {}): { ok: boolean; stdout: string; stderr: string; status: number | null } {
+  const result = spawnSync("lark-cli", args, { encoding: "utf8", timeout: options.timeoutMs ?? 30_000, maxBuffer: 10 * 1024 * 1024 });
+  return { ok: result.status === 0, stdout: result.stdout ?? "", stderr: result.stderr ?? "", status: result.status };
+}

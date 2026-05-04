@@ -44,6 +44,7 @@
     }
   ],
   "postInstallChecks": [
+    "memoryops doctor --profile kairos-alt",
     "memoryops lark-cli status --check-auth --profile kairos-alt",
     "memoryops lark-cli preflight --purpose chat_messages --profile kairos-alt",
     "npm run dev -- eval --core"
@@ -53,7 +54,8 @@
       "chat_id"
     ],
     "command": "memoryops lark-cli e2e-chat --chat-id <oc_xxx> --profile kairos-alt --project kairos --trigger-text \"要不我们还是用 PostgreSQL？\"",
-    "success": "workflow.action == push_decision_card"
+    "success": "workflow.action == push_decision_card",
+    "doctorCommand": "memoryops doctor --profile kairos-alt --chat-id <oc_xxx> --e2e"
   },
   "safeDefaults": {
     "store": "jsonl",

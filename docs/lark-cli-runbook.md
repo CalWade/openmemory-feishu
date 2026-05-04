@@ -21,6 +21,14 @@ lark-cli auth status --profile kairos-alt
 
 ## 3. 预检权限
 
+推荐：
+
+```bash
+memoryops doctor --profile kairos-alt
+```
+
+分步检查：
+
 ```bash
 memoryops lark-cli status --check-auth --profile kairos-alt
 memoryops lark-cli preflight --purpose chat_messages --profile kairos-alt

@@ -109,6 +109,15 @@ KAIROS_FEISHU_WEBHOOK_URL=<webhook>
 
 ## 8. 验证命令
 
+优先用一条 doctor：
+
+```bash
+memoryops doctor --profile kairos-alt
+memoryops doctor --profile kairos-alt --chat-id <oc_xxx> --e2e
+```
+
+也可手动验证：
+
 ```bash
 npm run build
 npm test -- --run

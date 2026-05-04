@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { Command } from "commander";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { MemoryAtomSchema } from "./memory/schema.js";
 import { createManualMemory } from "./memory/factory.js";
 import { createMemoryStore } from "./memory/storeFactory.js";
@@ -19,7 +19,7 @@ import { formatRecallAnswer } from "./memory/recallFormatter.js";
 import { redactWebhookUrl, sendFeishuInteractiveWebhook } from "./feishuWebhook.js";
 import { loadEnvValue } from "./llm/config.js";
 import { runFeishuWorkflow } from "./workflow/feishuWorkflow.js";
-import { buildLarkCliPlan, checkLarkCliStatus, extractTextsFromLarkCliJson, preflightLarkCliPurpose, runLarkCliJson } from "./larkCliAdapter.js";
+import { buildLarkCliPlan, checkLarkCliStatus, extractTextsFromLarkCliJson, preflightLarkCliPurpose, runLarkCliJson, runLarkCliText } from "./larkCliAdapter.js";
 
 const program = new Command();
 
@@ -37,6 +37,68 @@ async function storeFromOptions(opts: { db?: string; events?: string; store?: st
 
 
 
+
+
+program
+  .command("doctor")
+  .option("--profile <profile>", "lark-cli profile 名称", "kairos-alt")
+  .option("--chat-id <chatId>", "可选：真实飞书群聊 chat_id，用于验证读取")
+  .option("--project <project>", "项目名", "kairos")
+  .option("--trigger-text <text>", "可选：端到端触发文本", "要不我们还是用 PostgreSQL？")
+  .option("--e2e", "提供 --chat-id 时同时跑真实 e2e-chat")
+  .option("--db <path>", "SQLite/JSONL 数据路径")
+  .option("--events <path>", "JSONL event log 路径")
+  .option("--store <kind>", "存储后端 jsonl/sqlite，默认 jsonl")
+  .description("Kairos/OpenClaw/lark-cli 安装配置诊断；用于 GitHub 链接自动安装后的验收")
+  .action(async (opts) => {
+    const checks = [] as Array<{ name: string; ok: boolean; detail?: unknown; next?: string }>;
+    const nodeMajor = Number(process.versions.node.split(".")[0]);
+    checks.push({ name: "node>=22", ok: nodeMajor >= 22, detail: process.version, next: nodeMajor >= 22 ? undefined : "安装 Node.js 22+" });
+    checks.push({ name: "openclaw.setup.json", ok: existsSync("openclaw.setup.json"), next: "确认当前目录是 Kairos 仓库根目录" });
+    const larkStatus = checkLarkCliStatus({ checkAuth: true, profile: opts.profile });
+    checks.push({ name: "lark-cli installed", ok: larkStatus.installed, detail: larkStatus.version, next: "npm install -g @larksuite/cli" });
+    checks.push({ name: `lark-cli profile ${opts.profile}`, ok: !!larkStatus.auth_ok, detail: larkStatus.auth_ok ? "authorized" : larkStatus.auth_summary || larkStatus.error, next: `lark-cli config init --new --name ${opts.profile} && lark-cli auth login --recommend --profile ${opts.profile}` });
+    const chatPreflight = preflightLarkCliPurpose("chat_messages", { profile: opts.profile });
+    checks.push({ name: "chat_messages scope", ok: chatPreflight.missing_scopes.length === 0, detail: { required: chatPreflight.required_scopes, missing: chatPreflight.missing_scopes }, next: chatPreflight.recommended_command?.join(" ") });
+    const searchPreflight = preflightLarkCliPurpose("message_search", { profile: opts.profile });
+    checks.push({ name: "message_search scope optional", ok: searchPreflight.missing_scopes.length === 0, detail: { optional: true, missing: searchPreflight.missing_scopes }, next: "可忽略；主流程按 chat_id 读取群消息" });
+    let chatRead: unknown = undefined;
+    let e2e: unknown = undefined;
+    if (opts.chatId) {
+      try {
+        const raw = runLarkCliJson(["im", "+chat-messages-list", "--chat-id", opts.chatId, "--format", "json", "--page-size", "5", "--profile", opts.profile]);
+        const texts = extractTextsFromLarkCliJson(raw);
+        chatRead = { ok: true, text_count: texts.length };
+        checks.push({ name: "read chat messages", ok: true, detail: chatRead });
+      } catch (error) {
+        chatRead = { ok: false, error: String(error) };
+        checks.push({ name: "read chat messages", ok: false, detail: chatRead, next: "确认 chat_id、profile 权限、用户是否在群内" });
+      }
+      if (opts.e2e) {
+        try {
+          const store = await storeFromOptions(opts);
+          const raw = runLarkCliJson(["im", "+chat-messages-list", "--chat-id", opts.chatId, "--format", "json", "--page-size", "20", "--profile", opts.profile]);
+          const texts = extractTextsFromLarkCliJson(raw);
+          let savedTotal = 0;
+          for (const item of texts) {
+            const window = { id: item.id, segment_id: item.id, topic_hint: "doctor-e2e", salience_score: 0.8, salience_signals: [], candidate_eligible: true, denoised_text: item.text, evidence_message_ids: [item.id], dropped_message_ids: [], estimated_tokens: Math.ceil(item.text.length / 2) };
+            const extraction = extractDecisionBaseline(window);
+            const atom = extractionToMemoryAtom(extraction, window, opts.project);
+            if (atom) { store.upsert(atom); savedTotal += 1; }
+          }
+          const workflow = runFeishuWorkflow(store, { text: opts.triggerText, project: opts.project });
+          e2e = { ok: workflow.action === "push_decision_card", read_total: texts.length, saved_total: savedTotal, workflow_action: workflow.action, memory_id: workflow.memory_id };
+          checks.push({ name: "e2e chat -> memory -> workflow", ok: workflow.action === "push_decision_card", detail: e2e, next: "群里需存在可抽取的历史决策，并用相关 trigger-text 验证" });
+        } catch (error) {
+          e2e = { ok: false, error: String(error) };
+          checks.push({ name: "e2e chat -> memory -> workflow", ok: false, detail: e2e, next: "先跑 memoryops lark-cli e2e-chat 定位详情" });
+        }
+      }
+    }
+    const requiredOk = checks.filter((c) => !c.name.includes("optional")).every((c) => c.ok);
+    console.log(JSON.stringify({ ok: requiredOk, command: "doctor", profile: opts.profile, chat_id: opts.chatId, checks }, null, 2));
+    if (!requiredOk) process.exitCode = 1;
+  });
 
 const larkCli = program
   .command("lark-cli")
