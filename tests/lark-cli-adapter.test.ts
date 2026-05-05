@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildLarkCliPlan, checkLarkCliStatus, extractTextsFromLarkCliJson, preflightLarkCliPurpose } from "../src/larkCliAdapter.js";
+import { buildLarkCliPlan, checkLarkCliStatus, extractTextsFromLarkCliJson, preflightLarkCliPurpose, toNormalizedMessages } from "../src/larkCliAdapter.js";
 
 describe("lark-cli adapter", () => {
   it("status check never throws", () => {
@@ -45,5 +45,39 @@ describe("lark-cli adapter", () => {
     });
     expect(texts.map((item) => item.text)).toContain("最终决定使用 SQLite，不用 PostgreSQL。");
     expect(texts.map((item) => item.id)).toContain("om_1");
+  });
+
+  it("toNormalizedMessages 保留完整元数据供线程恢复使用", () => {
+    const messages = toNormalizedMessages({
+      data: {
+        messages: [
+          {
+            message_id: "om_1",
+            sender: { name: "Alice", id: "ou_alice" },
+            create_time: 1715000000000,
+            chat_id: "oc_123",
+            thread_id: "omt_thread_1",
+            reply_to: "om_parent",
+            content: "{\"text\":\"最终决定使用 SQLite。\"}",
+          },
+          {
+            message_id: "om_2",
+            sender: { name: "Bob", id: "ou_bob" },
+            create_time: 1715000010000,
+            chat_id: "oc_123",
+            content: "{\"text\":\"同意，先按这个来。\"}",
+          },
+        ],
+      },
+    }, "oc_123");
+    expect(messages).toHaveLength(2);
+    expect(messages[0].id).toBe("om_1");
+    expect(messages[0].sender).toBe("Alice");
+    expect(messages[0].timestamp).toBe(1715000000000);
+    expect(messages[0].chat_id).toBe("oc_123");
+    expect(messages[0].thread_id).toBe("omt_thread_1");
+    expect(messages[0].reply_to).toBe("om_parent");
+    expect(messages[1].sender).toBe("Bob");
+    expect(messages[1].thread_id).toBeUndefined();
   });
 });

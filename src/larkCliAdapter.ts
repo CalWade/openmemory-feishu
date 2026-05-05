@@ -137,6 +137,8 @@ function buildPreflightNotes(purpose: LarkCliPurpose, installed: boolean, authOk
   return [`${purpose} 所需 lark-cli scope 已满足`];
 }
 
+import type { NormalizedMessage } from "./candidate/types.js";
+
 export type LarkCliExtractedText = {
   id: string;
   text: string;
@@ -157,6 +159,93 @@ export function extractTextsFromLarkCliJson(value: unknown): LarkCliExtractedTex
     });
   }
   return dedupeByText(result);
+}
+
+/**
+ * 将 lark-cli JSON 输出转换为 NormalizedMessage。
+ * 保留完整元数据（sender, timestamp, chat_id, thread_id, reply_to），
+ * 供后续线程恢复、证据链、去重使用。
+ */
+export function toNormalizedMessages(value: unknown, chatIdHint?: string): NormalizedMessage[] {
+  const rows = collectRecords(value);
+  const result: NormalizedMessage[] = [];
+  for (const row of rows) {
+    const text = pickText(row);
+    if (!text) continue;
+    const id = pickId(row) ?? `lark_${row._index ?? result.length}`;
+    const sender = pickSender(row);
+    const timestamp = pickTimestamp(row);
+    const chat_id = typeof row.chat_id === "string" ? row.chat_id : chatIdHint;
+    const thread_id = typeof row.thread_id === "string" ? row.thread_id : undefined;
+    const reply_to = typeof row.reply_to === "string" ? row.reply_to : undefined;
+    result.push({
+      id,
+      sender,
+      text,
+      timestamp,
+      chat_id,
+      thread_id,
+      reply_to,
+      mentions: pickMentions(row),
+      links: pickLinks(row),
+      doc_tokens: [],
+      task_ids: [],
+      source: "feishu_chat",
+      raw: row,
+    });
+  }
+  return dedupeById(result);
+}
+
+function pickSender(record: Record<string, unknown>): string {
+  const sender = record.sender;
+  if (sender && typeof sender === "object") {
+    const s = sender as Record<string, unknown>;
+    if (typeof s.name === "string") return s.name;
+    if (typeof s.id === "string") return s.id;
+    if (typeof s.open_id === "string") return s.open_id;
+  }
+  return typeof record.sender_id === "string" ? record.sender_id : "unknown";
+}
+
+function pickTimestamp(record: Record<string, unknown>): number {
+  const ts = record.create_time ?? record.timestamp ?? record.send_time;
+  if (typeof ts === "number") return ts;
+  if (typeof ts === "string") {
+    const n = Date.parse(ts);
+    return isNaN(n) ? 0 : n;
+  }
+  return 0;
+}
+
+function pickMentions(record: Record<string, unknown>): string[] {
+  const mentions = record.mentions ?? record.at_users;
+  if (!Array.isArray(mentions)) return [];
+  return mentions
+    .map((m) => {
+      if (typeof m === "string") return m;
+      const obj = m as Record<string, unknown>;
+      return (typeof obj.name === "string" ? obj.name : undefined) ?? (typeof obj.id === "string" ? obj.id : undefined) ?? "";
+    })
+    .filter(Boolean);
+}
+
+function pickLinks(record: Record<string, unknown>): string[] {
+  const text = String(record.text ?? record.content ?? "");
+  const links: string[] = [];
+  const urlRe = /https?:\/\/[^\s<>"{}|\\^`\[\]]+/gi;
+  let m: RegExpExecArray | null;
+  while ((m = urlRe.exec(text)) !== null) links.push(m[0]);
+  return links;
+}
+
+function dedupeById(items: NormalizedMessage[]): NormalizedMessage[] {
+  const seen = new Set<string>();
+  return items.filter((item) => {
+    if (seen.has(item.id)) return false;
+    seen.add(item.id);
+    return true;
+  });
 }
 
 function collectRecords(value: unknown): Record<string, unknown>[] {
