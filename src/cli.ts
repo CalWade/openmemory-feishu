@@ -19,7 +19,9 @@ import { formatRecallAnswer } from "./memory/recallFormatter.js";
 import { redactWebhookUrl, sendFeishuInteractiveWebhook } from "./feishuWebhook.js";
 import { loadEnvValue } from "./llm/config.js";
 import { runFeishuWorkflow } from "./workflow/feishuWorkflow.js";
-import { buildLarkCliPlan, checkLarkCliStatus, extractTextsFromLarkCliJson, preflightLarkCliPurpose, runLarkCliJson, runLarkCliText } from "./larkCliAdapter.js";
+import { buildLarkCliPlan, checkLarkCliStatus, extractTextsFromLarkCliJson, preflightLarkCliPurpose, runLarkCliJson, runLarkCliText, toNormalizedMessages } from "./larkCliAdapter.js";
+import { threadMessages } from "./candidate/thread.js";
+import { buildCandidateWindowFromThread } from "./candidate/window.js";
 
 const program = new Command();
 
@@ -233,35 +235,74 @@ larkCli
   .option("--db <path>", "SQLite/JSONL 数据路径")
   .option("--events <path>", "JSONL event log 路径")
   .option("--store <kind>", "存储后端 jsonl/sqlite，默认 jsonl")
-  .description("调用官方 lark-cli 读取群消息，并进入 Kairos 抽取/入库管道")
+  .option("--thread-gap <ms>", "会话解缠时间间隔阈值(ms)", "300000")
+  .description("调用官方 lark-cli 读取群消息，线程化→窗口化→抽取→入库")
   .action(async (opts) => {
     const args = ["im", "+chat-messages-list", "--chat-id", opts.chatId, "--format", "json", "--page-size", String(opts.pageSize)];
     if (opts.start) args.push("--start", opts.start);
     if (opts.end) args.push("--end", opts.end);
     if (opts.profile) args.push("--profile", opts.profile);
+
+    // 1. 读取原始 JSON
     const raw = runLarkCliJson(args);
-    const texts = extractTextsFromLarkCliJson(raw);
+
+    // 2. 转换为 NormalizedMessage（保留完整元数据）
+    const messages = toNormalizedMessages(raw, opts.chatId);
+
+    // 3. 会话解缠：消息 → 线程
+    const threads = threadMessages(messages, { max_gap_ms: Number(opts.threadGap) });
+
+    // 4. 每个线程构造 CandidateWindow
+    const windows = threads.map((t) => buildCandidateWindowFromThread(t));
+
+    // 5. 从窗口抽取决策
     const store = opts.write ? await storeFromOptions(opts) : undefined;
     const results = [];
-    for (const item of texts) {
-      const window = {
-        id: item.id,
-        segment_id: item.id,
-        topic_hint: "lark-cli-chat",
-        salience_score: 0.8,
-        salience_signals: [],
+    for (const win of windows) {
+      // 只处理有 resolution 信号或足够 salience 的窗口
+      if (!win.has_resolution_cue && win.salience_score < 5) {
+        results.push({ window: win.id, skipped: true, reason: "no_resolution_cue_and_low_salience" });
+        continue;
+      }
+      const extraction = extractDecisionBaseline({
+        id: win.id,
+        segment_id: win.thread_id ?? win.id,
+        topic_hint: win.topic_hint ?? "",
+        salience_score: win.salience_score,
+        salience_signals: win.salience_reasons,
         candidate_eligible: true,
-        denoised_text: item.text,
-        evidence_message_ids: [item.id],
-        dropped_message_ids: [],
-        estimated_tokens: Math.ceil(item.text.length / 2),
-      };
-      const extraction = extractDecisionBaseline(window);
-      const atom = extractionToMemoryAtom(extraction, window, opts.project);
+        denoised_text: win.denoised_text,
+        evidence_message_ids: win.evidence_message_ids,
+        dropped_message_ids: win.dropped_message_ids,
+        estimated_tokens: win.estimated_tokens,
+      });
+      const atom = extractionToMemoryAtom(extraction, {
+        id: win.id,
+        segment_id: win.thread_id ?? win.id,
+        topic_hint: win.topic_hint ?? "",
+        salience_score: win.salience_score,
+        salience_signals: win.salience_reasons,
+        candidate_eligible: true,
+        denoised_text: win.denoised_text,
+        evidence_message_ids: win.evidence_message_ids,
+        dropped_message_ids: win.dropped_message_ids,
+        estimated_tokens: win.estimated_tokens,
+      }, opts.project);
       const saved = opts.write && atom ? store!.upsert(atom) : undefined;
-      results.push({ source: item, extraction, atom, saved });
+      results.push({ window: win.id, thread_id: win.thread_id, salience: win.salience_score, extraction, atom, saved });
     }
-    console.log(JSON.stringify({ ok: true, command: "lark-cli ingest-chat", chat_id: opts.chatId, total: results.length, saved_total: results.filter((r) => r.saved).length, results }, null, 2));
+
+    console.log(JSON.stringify({
+      ok: true,
+      command: "lark-cli ingest-chat",
+      chat_id: opts.chatId,
+      messages: messages.length,
+      threads: threads.length,
+      windows: windows.length,
+      processed: results.filter((r) => !r.skipped).length,
+      saved_total: results.filter((r) => r.saved).length,
+      results,
+    }, null, 2));
   });
 
 larkCli
