@@ -4,17 +4,85 @@
 
 ## 一句话说明
 
-Kairos 解决的是团队协作中的“群聊失忆”问题：
-
-```text
-过去已经讨论清楚的决策，几天后又被重新争论；
-关键理由散落在群聊里，没人能快速找到；
-新旧规则混在一起，容易把过期信息当成当前事实。
-```
+Kairos 解决的是团队协作中的“群聊失忆”问题：已经讨论清楚的决策，几天后又被重新争论；关键理由散落在群聊里，没人能快速找到；新旧规则混在一起，容易把过期信息当成当前事实。
 
 Kairos 把这些群聊信息转化为有状态、有证据链、可更新的长期记忆。
 
-## 当前工作流
+## 用 OpenClaw 接入
+
+把下面这句话发给 OpenClaw Agent：
+
+```text
+https://github.com/CalWade/Kairos；请按 QUICKSTART.md 的 lark-cli Runtime 模式接入飞书群。
+```
+
+`QUICKSTART.md` 专门给 OpenClaw Agent 使用，包含完整部署、授权、接入、启动步骤。
+
+## 本地运行
+
+### 1. 安装
+
+```bash
+git clone https://github.com/CalWade/Kairos.git
+cd Kairos
+npm install
+npm run build
+```
+
+### 2. 授权 lark-cli
+
+```bash
+npm install -g @larksuite/cli
+lark-cli auth login --recommend --profile kairos-alt
+```
+
+授权命令需要保持运行，直到浏览器授权完成并返回成功。不要反复运行 `lark-cli config init --new`。
+
+### 3. 接入飞书群
+
+准备：
+
+```text
+chat_id：要监听的飞书群，例如 oc_xxx
+webhook：该群自定义机器人 webhook
+```
+
+运行：
+
+```bash
+npm run setup:lark-runtime -- \
+  --profile kairos-alt \
+  --chat-id oc_xxx \
+  --feishu-webhook "https://open.feishu.cn/open-apis/bot/v2/hook/xxx" \
+  --test-read \
+  --test-webhook
+```
+
+### 4. 启动 Dashboard
+
+```bash
+npm run dashboard
+```
+
+打开：
+
+```text
+http://127.0.0.1:8787
+```
+
+### 5. 启动 Runtime
+
+```bash
+npm run lark-runtime
+```
+
+调试只跑一轮：
+
+```bash
+npm run lark-runtime:once
+```
+
+## 工作流
 
 ```text
 飞书群聊
@@ -68,36 +136,6 @@ Kairos 会自动召回此前决策，推送飞书决策卡片：
 | 可视化 | Dashboard 以中文数据流展示引擎工作过程 |
 | 自证评测 | 内置抗干扰、矛盾更新、召回、线程链接等评测 |
 
-## 快速接入
-
-本地运行或让 OpenClaw Agent 代为部署，都看同一个文档：
-
-```text
-QUICKSTART.md
-```
-
-如果你要让 OpenClaw Agent 操作，直接发：
-
-```text
-https://github.com/CalWade/Kairos；请按 QUICKSTART.md 的 lark-cli Runtime 模式接入飞书群。
-```
-
-## 最短命令
-
-```bash
-npm install
-npm run build
-npm run setup:lark-runtime -- --profile kairos-alt --chat-id oc_xxx --feishu-webhook "https://open.feishu.cn/open-apis/bot/v2/hook/xxx" --test-read --test-webhook
-npm run dashboard
-npm run lark-runtime
-```
-
-Dashboard 默认地址：
-
-```text
-http://127.0.0.1:8787
-```
-
 ## Dashboard 展示
 
 Dashboard 是旁路观察页面，不向群聊发送调试消息。它展示 Kairos 的真实数据流：
@@ -135,19 +173,13 @@ npm run dev -- eval --suite thread-linking
 npm run dev -- eval --suite llm-decision-extraction
 ```
 
-评测结果会保存到：
-
-```text
-runs/latest-eval.json
-```
-
-并自动显示在 Dashboard。
+评测结果会保存到 `runs/latest-eval.json`，并自动显示在 Dashboard。
 
 ## 主要文档
 
 | 文档 | 说明 |
 |---|---|
-| [`QUICKSTART.md`](./QUICKSTART.md) | 接入飞书群的唯一快速入口 |
+| [`QUICKSTART.md`](./QUICKSTART.md) | OpenClaw Agent 快速接入提示词 |
 | [`docs/lark-cli-runbook.md`](./docs/lark-cli-runbook.md) | lark-cli 授权、群接入和排障 |
 | [`docs/demo-script.md`](./docs/demo-script.md) | 复赛演示脚本 |
 | [`docs/benchmark-report.md`](./docs/benchmark-report.md) | 自证评测报告 |
