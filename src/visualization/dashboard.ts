@@ -71,9 +71,9 @@ export function renderEngineDashboardHtml(data: EngineDashboardData, options: { 
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   ${options.refreshSeconds ? `<meta http-equiv="refresh" content="${options.refreshSeconds}">` : ""}
-  <title>Kairos Engine Dashboard</title>
+  <title>Kairos 引擎工作流可视化</title>
   <style>
-    :root { color-scheme: dark; --bg:#0b1020; --card:#111a2e; --card2:#17223a; --text:#e8eefc; --muted:#91a1bd; --ok:#3ddc97; --warn:#ffd166; --bad:#ff6b6b; --blue:#70a1ff; }
+    :root { color-scheme: dark; --bg:#0b1020; --card:#111a2e; --card2:#17223a; --text:#e8eefc; --muted:#91a1bd; --ok:#3ddc97; --warn:#ffd166; --bad:#ff6b6b; --blue:#70a1ff; --purple:#b388ff; }
     * { box-sizing: border-box; }
     body { margin: 0; font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: radial-gradient(circle at top left, #1b2b52, var(--bg)); color: var(--text); }
     header { padding: 28px 32px 16px; display:flex; align-items:flex-end; justify-content:space-between; gap: 20px; }
@@ -87,10 +87,17 @@ export function renderEngineDashboardHtml(data: EngineDashboardData, options: { 
     .metric small { font-size: 13px; color: var(--muted); font-weight:500; }
     .pill { display:inline-flex; align-items:center; border-radius:999px; padding:4px 9px; font-size:12px; margin: 2px 4px 2px 0; background:#22304f; color:#c7d6ff; }
     .ok { color: var(--ok); } .warn { color: var(--warn); } .bad { color: var(--bad); } .blue { color: var(--blue); }
-    .timeline { display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
-    .step { flex:1; min-width:140px; background:var(--card2); border-radius:14px; padding:12px; border:1px solid rgba(255,255,255,.06); }
-    .step b { display:block; font-size:14px; margin-bottom:4px; }
-    .step span { font-size:12px; color:var(--muted); }
+    .flow { position:relative; display:grid; grid-template-columns: repeat(5, minmax(150px, 1fr)); gap:18px; padding: 12px 0 4px; }
+    .flow::before { content:""; position:absolute; left:8%; right:8%; top:51%; height:3px; background:linear-gradient(90deg, var(--blue), var(--purple), var(--ok)); opacity:.55; box-shadow:0 0 18px rgba(112,161,255,.45); animation: flowline 2.2s linear infinite; }
+    .node { position:relative; z-index:1; min-height:132px; padding:16px; border-radius:18px; background:rgba(23,34,58,.92); border:1px solid rgba(255,255,255,.09); overflow:hidden; }
+    .node::after { content:""; position:absolute; inset:-40%; background:radial-gradient(circle, rgba(112,161,255,.22), transparent 38%); opacity:.55; animation:pulse 2.6s ease-in-out infinite; }
+    .node h3 { position:relative; z-index:1; margin:0 0 8px; font-size:15px; }
+    .node .big { position:relative; z-index:1; font-size:32px; font-weight:800; margin:4px 0; }
+    .node .desc { position:relative; z-index:1; color:var(--muted); font-size:12px; line-height:1.45; }
+    .node.active { border-color:rgba(61,220,151,.5); box-shadow:0 0 28px rgba(61,220,151,.12); }
+    .node.warn { border-color:rgba(255,209,102,.55); }
+    @keyframes pulse { 0%,100% { transform:scale(.8); opacity:.25; } 50% { transform:scale(1.05); opacity:.65; } }
+    @keyframes flowline { 0% { filter:hue-rotate(0deg); opacity:.35; } 50% { opacity:.8; } 100% { filter:hue-rotate(60deg); opacity:.35; } }
     table { width:100%; border-collapse: collapse; font-size: 13px; }
     th, td { text-align:left; padding:9px 8px; border-bottom:1px solid rgba(255,255,255,.07); vertical-align:top; }
     th { color:#b8c5dd; font-weight:600; }
@@ -103,53 +110,53 @@ export function renderEngineDashboardHtml(data: EngineDashboardData, options: { 
 <body>
   <header>
     <div>
-      <h1>Kairos Engine Dashboard</h1>
-      <div class="sub">飞书工作流旁路可视化 · 不污染群聊 · 真实追踪 Memory Engine 状态</div>
+      <h1>Kairos 引擎工作流可视化</h1>
+      <div class="sub">旁路观察真实数据流 · 不向飞书群发送调试消息 · 追踪从群聊到长期记忆的每一步</div>
     </div>
-    <div class="sub mono">generated_at ${escapeHtml(data.generated_at)}</div>
+    <div class="sub mono">刷新时间 ${escapeHtml(data.generated_at)}</div>
   </header>
 
   <main class="grid">
-    <section class="card span3"><div class="metric">${data.memories.length}<br/><small>MemoryAtom 总数</small></div></section>
-    <section class="card span3"><div class="metric ok">${activeMemories.length}<br/><small>Active Memories</small></div></section>
-    <section class="card span3"><div class="metric ${pendingInduction.length ? "warn" : "ok"}">${pendingInduction.length}<br/><small>Pending Induction</small></div></section>
-    <section class="card span3"><div class="metric ${pendingRefine.length ? "warn" : "ok"}">${pendingRefine.length}<br/><small>Pending Refine</small></div></section>
+    <section class="card span3"><div class="metric">${data.memories.length}<br/><small>记忆总数</small></div></section>
+    <section class="card span3"><div class="metric ok">${activeMemories.length}<br/><small>当前有效记忆</small></div></section>
+    <section class="card span3"><div class="metric ${pendingInduction.length ? "warn" : "ok"}">${pendingInduction.length}<br/><small>待归纳任务</small></div></section>
+    <section class="card span3"><div class="metric ${pendingRefine.length ? "warn" : "ok"}">${pendingRefine.length}<br/><small>待修正任务</small></div></section>
 
     <section class="card span12">
-      <h2>工作流追踪</h2>
-      <div class="timeline">
-        ${step("1", "Feishu Message", `${latestHook.length} hook logs`)}
-        ${step("2", "Thread Linking", `${induction.length} induction jobs`)}
-        ${step("3", "MemoryAtom", `${activeMemories.length} active`)}
-        ${step("4", "Activation", `${data.activations.length} card sends`)}
-        ${step("5", "Feedback / Refine", `${refine.length} refine jobs`)}
+      <h2>真实工作流数据流</h2>
+      <div class="flow">
+        ${flowNode("① 飞书消息进入", latestHook.length, "OpenClaw Hook / lark-cli 把真实群聊消息送入 Kairos", latestHook.length > 0)}
+        ${flowNode("② 会话解缠与归纳", induction.length, "LLM thread linking 与 induction queue 在后台理解上下文", induction.length > 0, pendingInduction.length > 0)}
+        ${flowNode("③ 长期记忆生成", activeMemories.length, "MemoryAtom 保存决策、风险、约定及证据链", activeMemories.length > 0)}
+        ${flowNode("④ 历史记忆激活", data.activations.length, "后续群聊触及历史决策时触发卡片提醒", data.activations.length > 0)}
+        ${flowNode("⑤ 反馈与修正", refine.length, "确认、忽略、请求更新进入 refine queue", refine.length > 0, pendingRefine.length > 0)}
       </div>
     </section>
 
     <section class="card span7">
-      <h2>Active Memories</h2>
+      <h2>当前有效记忆</h2>
       ${memoryTable(activeMemories)}
     </section>
 
     <section class="card span5">
-      <h2>Queues</h2>
-      ${queueTable("Induction", induction.slice(-8).reverse())}
+      <h2>后台队列</h2>
+      ${queueTable("归纳队列", induction.slice(-8).reverse())}
       <div style="height:14px"></div>
-      ${queueTable("Refine", refine.slice(-8).reverse())}
+      ${queueTable("修正队列", refine.slice(-8).reverse())}
     </section>
 
     <section class="card span6">
-      <h2>Recent Hook / Activation Logs</h2>
+      <h2>最近飞书入口 / 激活日志</h2>
       ${logTable(latestHook)}
     </section>
 
     <section class="card span6">
-      <h2>Recent Memory Events</h2>
+      <h2>最近记忆事件</h2>
       ${logTable(latestEvents)}
     </section>
 
     <section class="card span12">
-      <h2>Benchmark / Local Eval Results</h2>
+      <h2>本地评测结果</h2>
       ${evalTable(latestEval)}
     </section>
   </main>
@@ -173,13 +180,17 @@ export async function serveEngineDashboard(options: EngineDashboardOptions & { p
   return { server, url: `http://127.0.0.1:${port}` };
 }
 
+function flowNode(title: string, count: number, desc: string, active: boolean, warn = false): string {
+  return `<div class="node ${active ? "active" : ""} ${warn ? "warn" : ""}"><h3>${escapeHtml(title)}</h3><div class="big">${count}</div><div class="desc">${escapeHtml(desc)}</div></div>`;
+}
+
 function step(n: string, title: string, detail: string): string {
   return `<div class="step"><b><span class="pill">${n}</span>${escapeHtml(title)}</b><span>${escapeHtml(detail)}</span></div>`;
 }
 
 function memoryTable(memories: MemoryAtom[]): string {
-  if (!memories.length) return `<div class="muted">暂无 active memory</div>`;
-  return `<table><thead><tr><th>Type</th><th>Subject</th><th>Content</th><th>Status</th></tr></thead><tbody>${memories.map((m) => `<tr><td><span class="pill">${escapeHtml(m.type)}</span></td><td class="mono">${escapeHtml(m.subject)}</td><td>${escapeHtml(short(m.content, 150))}</td><td>${escapeHtml(m.status)}</td></tr>`).join("")}</tbody></table>`;
+  if (!memories.length) return `<div class="muted">暂无有效记忆</div>`;
+  return `<table><thead><tr><th>类型</th><th>主题</th><th>内容</th><th>状态</th></tr></thead><tbody>${memories.map((m) => `<tr><td><span class="pill">${escapeHtml(m.type)}</span></td><td class="mono">${escapeHtml(m.subject)}</td><td>${escapeHtml(short(m.content, 150))}</td><td>${escapeHtml(m.status)}</td></tr>`).join("")}</tbody></table>`;
 }
 
 function queueTable(title: string, jobs: any[]): string {
@@ -193,7 +204,7 @@ function logTable(items: unknown[]): string {
 
 function evalTable(items: any[]): string {
   if (!items.length) return `<div class="muted">暂无本地评测结果。运行 <span class="mono">memoryops eval --core</span> 后会自动出现在这里。</div>`;
-  return `<table><thead><tr><th>Time</th><th>Mode</th><th>Suites</th><th>Passed</th><th>Details</th></tr></thead><tbody>${items.map((item) => {
+  return `<table><thead><tr><th>时间</th><th>模式</th><th>测试集</th><th>通过</th><th>详情</th></tr></thead><tbody>${items.map((item) => {
     const result = item.result ?? item.results ?? item;
     const suites = Array.isArray(result) ? result : [result];
     const total = suites.reduce((sum: number, s: any) => sum + Number(s.total ?? 0), 0);

@@ -16,15 +16,15 @@ describe("Engine Dashboard", () => {
       writeFileSync(evalPath, JSON.stringify({ at: "2026-05-06T00:00:00.000Z", mode: "core", results: [{ suite: "recall", total: 1, passed: 1, failed: 0 }] }));
       const data = buildEngineDashboardData({ store, eventsPath: join(dir, "events.jsonl"), inductionQueuePath: join(dir, "induction.jsonl"), refineQueuePath: join(dir, "refine.jsonl"), activationThrottlePath: join(dir, "activation.jsonl"), hookLogPath: join(dir, "hook.jsonl"), evalResultPath: evalPath });
       const html = renderEngineDashboardHtml(data);
-      expect(html).toContain("Kairos Engine Dashboard");
+      expect(html).toContain("Kairos 引擎工作流可视化");
       expect(html).toContain("复赛阶段使用 SQLite");
-      expect(html).toContain("Feishu Message");
-      expect(html).toContain("MemoryAtom");
-      expect(html).toContain("Benchmark / Local Eval Results");
+      expect(html).toContain("飞书消息进入");
+      expect(html).toContain("长期记忆生成");
+      expect(html).toContain("本地评测结果");
       expect(html).toContain("recall");
       const output = join(dir, "dashboard.html");
       writeEngineDashboardHtml(data, output);
-      expect(renderEngineDashboardHtml(data)).toContain("Active Memories");
+      expect(renderEngineDashboardHtml(data)).toContain("当前有效记忆");
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
