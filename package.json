@@ -17,7 +17,9 @@
     "demo:lark-cli-chat": "bash scripts/demo-lark-cli-chat.sh",
     "eval:core": "tsx src/cli.ts eval --core",
     "dashboard": "tsx src/cli.ts eval --core >/dev/null && tsx src/cli.ts dashboard --serve --port 8787",
-    "dashboard:static": "tsx src/cli.ts eval --core >/dev/null && tsx src/cli.ts dashboard --output runs/kairos-engine-dashboard.html"
+    "dashboard:static": "tsx src/cli.ts eval --core >/dev/null && tsx src/cli.ts dashboard --output runs/kairos-engine-dashboard.html",
+    "lark-runtime": "tsx src/cli.ts lark-cli runtime --chat-id \"$KAIROS_CHAT_ID\" --profile \"${KAIROS_LARK_PROFILE:-kairos-alt}\" --llm-thread-link --fallback --send-feishu-webhook",
+    "lark-runtime:once": "tsx src/cli.ts lark-cli runtime --chat-id \"$KAIROS_CHAT_ID\" --profile \"${KAIROS_LARK_PROFILE:-kairos-alt}\" --llm-thread-link --fallback --once"
   },
   "keywords": [
     "memory",

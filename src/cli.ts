@@ -28,6 +28,7 @@ import { runFeishuWorkflow } from "./workflow/feishuWorkflow.js";
 import { ActivationThrottle } from "./workflow/activationThrottle.js";
 import { buildEngineDashboardData, serveEngineDashboard, writeEngineDashboardHtml } from "./visualization/dashboard.js";
 import { buildLarkCliPlan, checkLarkCliStatus, extractTextsFromLarkCliJson, preflightLarkCliPurpose, runLarkCliJson, runLarkCliText, toNormalizedMessages } from "./larkCliAdapter.js";
+import { runLarkRuntime } from "./larkRuntime/worker.js";
 import { threadMessages, type ConversationThread } from "./candidate/thread.js";
 import { linkThreadsWithLlm } from "./candidate/llmThreadLinker.js";
 import { buildCandidateWindowFromThread } from "./candidate/window.js";
@@ -253,6 +254,48 @@ function renderDoctorPretty(report: { ok: boolean; profile: string; chat_id?: st
 const larkCli = program
   .command("lark-cli")
   .description("官方 lark-cli 适配层（当前仅做本地状态检查，不触发授权或数据读取）");
+
+larkCli
+  .command("runtime")
+  .option("--chat-id <chatId>", "飞书群聊 chat_id；也可用 KAIROS_CHAT_ID")
+  .option("--profile <profile>", "lark-cli profile；也可用 KAIROS_LARK_PROFILE")
+  .option("--project <project>", "项目名", "kairos")
+  .option("--interval-ms <ms>", "轮询间隔", "10000")
+  .option("--page-size <size>", "每轮读取消息数", "20")
+  .option("--once", "只跑一轮，便于调试")
+  .option("--send-feishu-webhook", "activation 命中时通过飞书机器人 webhook 发卡")
+  .option("--feishu-webhook <url>", "飞书机器人 webhook；也可用 KAIROS_FEISHU_WEBHOOK_URL")
+  .option("--state <path>", "已处理消息状态文件", "data/lark_runtime_state.json")
+  .option("--runtime-log <path>", "runtime JSONL 日志", "runs/lark-runtime.jsonl")
+  .option("--induction-queue <path>", "induction queue JSONL 路径", "data/induction_queue.jsonl")
+  .option("--activation-throttle <path>", "activation throttle JSONL 路径", "data/activation_throttle.jsonl")
+  .option("--cooldown-ms <ms>", "同群同 memory 推卡冷却时间", "900000")
+  .option("--llm-thread-link", "后台归纳时使用 LLM thread linking")
+  .option("--fallback", "LLM 失败时 fallback 到 baseline", true)
+  .option("--db <path>", "SQLite/JSONL 数据路径")
+  .option("--events <path>", "JSONL event log 路径")
+  .option("--store <kind>", "存储后端 jsonl/sqlite，默认 jsonl")
+  .description("lark-cli 产品运行时：轮询群消息、归纳记忆、激活卡片、写 Dashboard 状态")
+  .action(async (opts) => {
+    await runLarkRuntime({
+      chatId: opts.chatId ?? loadEnvValue("KAIROS_CHAT_ID"),
+      profile: opts.profile ?? loadEnvValue("KAIROS_LARK_PROFILE"),
+      project: opts.project,
+      pageSize: Number(opts.pageSize),
+      intervalMs: Number(opts.intervalMs),
+      once: !!opts.once,
+      sendFeishuWebhook: !!opts.sendFeishuWebhook,
+      feishuWebhookUrl: opts.feishuWebhook ?? loadEnvValue("KAIROS_FEISHU_WEBHOOK_URL"),
+      statePath: opts.state,
+      runtimeLogPath: opts.runtimeLog,
+      inductionQueuePath: opts.inductionQueue,
+      activationThrottlePath: opts.activationThrottle,
+      cooldownMs: Number(opts.cooldownMs),
+      llmThreadLink: !!opts.llmThreadLink,
+      fallback: !!opts.fallback,
+      store: await storeFromOptions(opts),
+    });
+  });
 
 larkCli
   .command("status")
