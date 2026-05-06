@@ -69,6 +69,28 @@ describe("reconcileAndApplyMemoryAtom", () => {
     expect(store.list({ project: "kairos" })[0].content).toContain("SQLite");
   }));
 
+  it("同 subject 的未定问题不能自动 SUPERSEDE，只能进入 conflict_pending", () => withStore((store) => {
+    const oldAtom = store.upsert(createManualMemory({
+      text: "最终决定数据库方案采用 PostgreSQL。",
+      project: "kairos",
+      type: "decision",
+      subject: "database_selection",
+      tags: ["PostgreSQL"],
+    }));
+    const incoming = createManualMemory({
+      text: "要不要改用 SQLite？这个还需要评估。",
+      project: "kairos",
+      type: "decision",
+      subject: "database_selection",
+      tags: ["SQLite"],
+    });
+    const result = reconcileAndApplyMemoryAtom(store, incoming);
+    expect(result.action).toBe("CONFLICT");
+    expect(result.target_id).toBe(oldAtom.id);
+    expect(store.get(oldAtom.id)?.status).toBe("active");
+    expect(result.atom?.status).toBe("conflict_pending");
+  }));
+
   it("同 subject 但关系不明时进入 conflict_pending", () => withStore((store) => {
     const oldAtom = store.upsert(createManualMemory({
       text: "数据库方案采用 PostgreSQL。",
