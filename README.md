@@ -11,6 +11,22 @@
 
 > **Kairos** 是项目对外名称，寓意“关键时刻 / 恰当时机”。它强调企业记忆不只是被动存储，而是在正确的时间召回正确的上下文。`memoryops` 仅作为 Kairos 的 CLI 命令名保留。
 
+## 当前推荐运行方式：lark-cli Runtime
+
+当前 P0 主线是 **lark-cli Runtime 模式**：用官方 `lark-cli` 读取目标飞书群消息，用飞书机器人 webhook 推送决策卡片，用 Dashboard 旁路展示引擎数据流。OpenClaw hook 仅作为历史/候选路径，不是当前主运行方式。
+
+快速接入请看：[`QUICKSTART.md`](./QUICKSTART.md)
+
+最短路径：
+
+```bash
+npm install
+npm run build
+npm run setup:lark-runtime -- --profile kairos-alt --chat-id oc_xxx --feishu-webhook "https://open.feishu.cn/open-apis/bot/v2/hook/xxx" --test-read --test-webhook
+npm run dashboard
+npm run lark-runtime
+```
+
 Kairos 是一个针对飞书 AI 校园挑战赛 OpenClaw Memory 赛道设计的企业协作记忆系统。它的目标不是做一个简单的聊天记录搜索工具，也不是泛泛的飞书 AI 助手，而是把飞书协作流中的碎片化信息沉淀为可管理、可检索、可更新、可遗忘、可评测的企业长期记忆。
 
 ## 背景问题

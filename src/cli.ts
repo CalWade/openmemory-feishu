@@ -118,6 +118,24 @@ function saveEvalOutput(path: string | undefined, output: unknown) {
   writeFileSync(path, JSON.stringify(output, null, 2), "utf8");
 }
 
+function upsertEnvFile(path: string, values: Record<string, string>) {
+  const existing = existsSync(path) ? readFileSync(path, "utf8").split(/\r?\n/) : [];
+  const keys = new Set(Object.keys(values));
+  const next = existing.filter((line) => {
+    const key = line.match(/^([A-Z0-9_]+)=/)?.[1];
+    return !key || !keys.has(key);
+  }).filter((line, idx, arr) => line.trim() || idx < arr.length - 1);
+  for (const [key, value] of Object.entries(values)) {
+    next.push(`${key}=${quoteEnvValue(value)}`);
+  }
+  writeFileSync(path, `${next.join("\n").trim()}\n`, "utf8");
+}
+
+function quoteEnvValue(value: string): string {
+  if (/^[A-Za-z0-9_./:-]+$/.test(value)) return value;
+  return JSON.stringify(value);
+}
+
 function conversationThreadsFromLlm(messages: ReturnType<typeof toNormalizedMessages>, llmThreads: Array<{ id: string; message_ids: string[]; topic_hint?: string; confidence: number }>): ConversationThread[] {
   const byId = new Map(messages.map((m) => [m.id, m]));
   return llmThreads.map((thread) => {
@@ -254,6 +272,73 @@ function renderDoctorPretty(report: { ok: boolean; profile: string; chat_id?: st
 const larkCli = program
   .command("lark-cli")
   .description("官方 lark-cli 适配层（当前仅做本地状态检查，不触发授权或数据读取）");
+
+larkCli
+  .command("runtime-setup")
+  .option("--profile <profile>", "lark-cli profile", "kairos-alt")
+  .option("--chat-id <chatId>", "要监听的飞书群 chat_id；也可读取 KAIROS_CHAT_ID")
+  .option("--feishu-webhook <url>", "飞书机器人 webhook；也可读取 KAIROS_FEISHU_WEBHOOK_URL")
+  .option("--write-env", "把 profile/chat_id/webhook 写入 .env")
+  .option("--test-read", "测试读取目标群最近消息")
+  .option("--test-webhook", "发送一条测试卡片到 webhook 绑定群")
+  .description("lark-runtime 接入向导：检查 lark-cli/profile/chat_id/webhook，并可写入 .env")
+  .action(async (opts) => {
+    const profile = opts.profile ?? loadEnvValue("KAIROS_LARK_PROFILE") ?? "kairos-alt";
+    const chatId = opts.chatId ?? loadEnvValue("KAIROS_CHAT_ID");
+    const webhook = opts.feishuWebhook ?? loadEnvValue("KAIROS_FEISHU_WEBHOOK_URL");
+    const status = checkLarkCliStatus({ checkAuth: true, profile });
+    const preflight = preflightLarkCliPurpose("chat_messages", { profile });
+    const checks = [] as Array<{ name: string; ok: boolean; detail?: unknown; next?: string }>;
+    checks.push({ name: "lark-cli installed", ok: status.installed, detail: status.version, next: "npm install -g @larksuite/cli" });
+    checks.push({ name: "lark-cli profile authorized", ok: !!status.auth_ok, detail: status.auth_summary, next: `lark-cli auth login --recommend --profile ${profile}` });
+    checks.push({ name: "chat_messages scope", ok: preflight.missing_scopes.length === 0, detail: { missing_scopes: preflight.missing_scopes }, next: preflight.recommended_command?.join(" ") });
+    checks.push({ name: "KAIROS_CHAT_ID", ok: !!chatId, detail: chatId, next: `lark-cli im +chat-list --format json --profile ${profile}` });
+    checks.push({ name: "KAIROS_FEISHU_WEBHOOK_URL", ok: !!webhook, detail: webhook ? redactWebhookUrl(webhook) : undefined, next: "在目标飞书群添加自定义机器人，复制 webhook" });
+
+    let readResult;
+    if (opts.testRead && chatId) {
+      try {
+        const raw = runLarkCliJson(["im", "+chat-messages-list", "--chat-id", chatId, "--format", "json", "--page-size", "3", "--profile", profile]);
+        const messages = toNormalizedMessages(raw, chatId);
+        readResult = { ok: true, messages: messages.length, sample: messages.slice(0, 2).map((m) => ({ id: m.id, sender: m.sender, text: m.text.slice(0, 80) })) };
+      } catch (error) {
+        readResult = { ok: false, error: error instanceof Error ? error.message : String(error) };
+      }
+      checks.push({ name: "read target chat", ok: !!readResult.ok, detail: readResult, next: "确认账号在目标群内且具备消息读取权限" });
+    }
+
+    let webhookResult;
+    if (opts.testWebhook && webhook) {
+      webhookResult = await sendFeishuInteractiveWebhook(webhook, {
+        config: { wide_screen_mode: true },
+        header: { title: { tag: "plain_text", content: "Kairos 接入测试" }, template: "blue" },
+        elements: [{ tag: "markdown", content: "✅ Kairos 已成功连接到这个飞书群。" }],
+      });
+      checks.push({ name: "send test card", ok: webhookResult.ok, detail: webhookResult, next: "确认 webhook 来自目标飞书群的自定义机器人" });
+    }
+
+    if (opts.writeEnv) {
+      if (!chatId) throw new Error("--write-env 需要 --chat-id 或 KAIROS_CHAT_ID");
+      upsertEnvFile(".env", {
+        KAIROS_PROJECT: "kairos",
+        KAIROS_LARK_PROFILE: profile,
+        KAIROS_CHAT_ID: chatId,
+        ...(webhook ? { KAIROS_FEISHU_WEBHOOK_URL: webhook } : {}),
+      });
+      checks.push({ name: "write .env", ok: true, detail: ".env" });
+    }
+
+    const ok = checks.every((c) => c.ok || c.name === "KAIROS_FEISHU_WEBHOOK_URL");
+    console.log(JSON.stringify({
+      ok,
+      command: "lark-cli runtime-setup",
+      profile,
+      chat_id: chatId,
+      webhook: webhook ? redactWebhookUrl(webhook) : undefined,
+      checks,
+      next: ok ? ["npm run dashboard", "npm run lark-runtime"] : checks.find((c) => !c.ok)?.next,
+    }, null, 2));
+  });
 
 larkCli
   .command("runtime")
