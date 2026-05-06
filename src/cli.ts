@@ -15,6 +15,7 @@ import { extractDecisionBaseline } from "./extractor/ruleDecisionExtractor.js";
 import { extractDecisionWithLlm } from "./extractor/llmDecisionExtractor.js";
 import { extractionToMemoryAtom } from "./extractor/toMemoryAtom.js";
 import { buildDecisionCard, renderDecisionCardFeishuPayload, renderDecisionCardMarkdown } from "./memory/decisionCard.js";
+import { reconcileAndApplyMemoryAtom } from "./memory/reconcile.js";
 import { formatRecallAnswer } from "./memory/recallFormatter.js";
 import { redactWebhookUrl, sendFeishuInteractiveWebhook } from "./feishuWebhook.js";
 import { loadEnvValue } from "./llm/config.js";
@@ -292,17 +293,10 @@ larkCli
         source_channel: "feishu",
         source_type: "feishu_message",
       }, opts.project);
-      let saved;
-      let duplicate_of: string | undefined;
-      if (opts.write && atom) {
-        const existing = store!.get(atom.id);
-        if (existing) {
-          duplicate_of = existing.id;
-        } else {
-          saved = store!.upsert(atom);
-        }
-      }
-      results.push({ window: win.id, thread_id: win.thread_id, salience: win.salience_score, extraction, atom, saved, duplicate_of });
+      const reconcile = opts.write && atom ? reconcileAndApplyMemoryAtom(store!, atom) : undefined;
+      const saved = reconcile?.action === "ADD" || reconcile?.action === "SUPERSEDE" || reconcile?.action === "CONFLICT" ? reconcile.atom : undefined;
+      const duplicate_of = reconcile?.action === "DUPLICATE" ? reconcile.target_id : undefined;
+      results.push({ window: win.id, thread_id: win.thread_id, salience: win.salience_score, extraction, atom, saved, duplicate_of, reconcile });
     }
 
     console.log(JSON.stringify({
