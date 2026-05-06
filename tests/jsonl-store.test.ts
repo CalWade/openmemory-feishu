@@ -32,6 +32,19 @@ describe("JsonlMemoryStore", () => {
     expect(workflow.action).toBe("push_decision_card");
   }));
 
+  it("相同 id 的重复 upsert 不会污染 active snapshot", () => withJsonlStore((store) => {
+    const atom = createManualMemory({
+      text: "决策：MVP 阶段使用 SQLite",
+      project: "kairos",
+      type: "decision",
+      subject: "local_storage_selection",
+    });
+    store.upsert(atom);
+    store.upsert({ ...atom, observed_at: "2026-05-06T01:00:00.000Z" });
+    expect(store.list({ project: "kairos" })).toHaveLength(1);
+    expect(store.get(atom.id)?.observed_at).toBe("2026-05-06T01:00:00.000Z");
+  }));
+
   it("支持 supersede 和提醒生命周期", () => withJsonlStore((store) => {
     const oldAtom = store.upsert(createManualMemory({ text: "以后周报每周五发给 Alice。", project: "kairos", type: "convention", subject: "weekly_report_receiver" }));
     const newAtom = createManualMemory({ text: "不对，周报以后发给 Bob。", project: "kairos", type: "convention", subject: "weekly_report_receiver" });

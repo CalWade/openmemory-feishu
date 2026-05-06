@@ -54,4 +54,18 @@ describe("extractionToMemoryAtom", () => {
     expect(atom?.source.channel).toBe("feishu");
     expect(atom?.source.source_type).toBe("feishu_message");
   });
+
+  it("相同证据链生成稳定 MemoryAtom id，避免重复 ingest 污染 snapshot", () => {
+    const window = {
+      ...win("张三：最终决定 MVP 阶段使用 SQLite 作为当前状态库。"),
+      evidence_message_ids: ["om_1", "om_2"],
+      source_channel: "feishu",
+      source_type: "feishu_message",
+    } satisfies CandidateWindow;
+    const result = extractDecisionBaseline(window);
+    const atom1 = extractionToMemoryAtom(result, window, "kairos", "2026-05-06T00:00:00.000Z");
+    const atom2 = extractionToMemoryAtom(result, window, "kairos", "2026-05-06T01:00:00.000Z");
+    expect(atom1?.id).toBe(atom2?.id);
+    expect(atom1?.metadata?.dedupe_key).toBe(atom2?.metadata?.dedupe_key);
+  });
 });

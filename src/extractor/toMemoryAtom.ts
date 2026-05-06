@@ -1,6 +1,7 @@
 import type { CandidateWindow } from "../candidate/window.js";
 import type { MemoryAtom, MemoryType } from "../memory/atom.js";
 import { createManualMemory } from "../memory/factory.js";
+import { makeMemoryId } from "../memory/id.js";
 import type { ExtractionResult } from "./decisionTypes.js";
 
 export function extractionToMemoryAtom(result: ExtractionResult, window: CandidateWindow, project?: string, nowOverride?: string): MemoryAtom | undefined {
@@ -9,6 +10,13 @@ export function extractionToMemoryAtom(result: ExtractionResult, window: Candida
   const now = nowOverride ?? new Date().toISOString();
   const { subject, content, tags, importance, decay_policy } = buildAtomContent(result);
   const review_at = computeReviewAt(result, now);
+  const source = {
+    channel: window.source_channel ?? "manual",
+    source_type: window.source_type ?? "manual_text",
+    excerpt: window.denoised_text,
+    chunk_ids: result.evidence_message_ids,
+  } as const;
+  const dedupe_key = buildDedupeKey({ project, type, subject, content, source });
   return {
     ...createManualMemory({
       text: content,
@@ -25,20 +33,36 @@ export function extractionToMemoryAtom(result: ExtractionResult, window: Candida
       now,
       review_at,
     }),
-    source: {
-      channel: window.source_channel ?? "manual",
-      source_type: window.source_type ?? "manual_text",
-      excerpt: window.denoised_text,
-      chunk_ids: result.evidence_message_ids,
-    },
+    id: makeMemoryId(dedupe_key),
+    source,
     metadata: {
       extraction_kind: result.kind,
       aliases: result.aliases,
       negative_keys: result.negative_keys,
       evidence_message_ids: result.evidence_message_ids,
+      dedupe_key,
       raw_extraction: result,
     },
   };
+}
+
+function buildDedupeKey(input: {
+  project?: string;
+  type: MemoryType;
+  subject: string;
+  content: string;
+  source: { channel: string; source_type: string; chunk_ids?: string[] };
+}): string {
+  const chunks = (input.source.chunk_ids ?? []).filter(Boolean).sort().join(",");
+  const contentHashBasis = input.content.replace(/\s+/g, " ").trim();
+  return [
+    input.project ?? "default",
+    input.type,
+    input.subject,
+    input.source.channel,
+    input.source.source_type,
+    chunks || contentHashBasis,
+  ].join("|");
 }
 
 function computeReviewAt(result: ExtractionResult, now: string): string | undefined {
