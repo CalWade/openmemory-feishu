@@ -15,6 +15,7 @@ import { extractDecisionBaseline } from "./extractor/ruleDecisionExtractor.js";
 import { extractDecisionWithLlm } from "./extractor/llmDecisionExtractor.js";
 import { extractionToMemoryAtom } from "./extractor/toMemoryAtom.js";
 import { buildDecisionCard, renderDecisionCardFeishuPayload, renderDecisionCardMarkdown } from "./memory/decisionCard.js";
+import { applyDecisionCardFeedback } from "./memory/cardFeedback.js";
 import { reconcileAndApplyMemoryAtom } from "./memory/reconcile.js";
 import { InductionQueue } from "./induction/queue.js";
 import { formatRecallAnswer } from "./memory/recallFormatter.js";
@@ -774,6 +775,33 @@ program
       return;
     }
     console.log(JSON.stringify(result, null, 2));
+  });
+
+program
+  .command("card-feedback")
+  .argument("<memoryId>")
+  .requiredOption("--action <action>", "confirm | ignore | update_requested")
+  .option("--user-id <userId>", "反馈用户 ID")
+  .option("--message-id <messageId>", "触发反馈的消息/卡片消息 ID")
+  .option("--note <note>", "补充说明")
+  .option("--now <time>", "mock current time, ISO 8601")
+  .option("--db <path>", "SQLite/JSONL 数据路径")
+  .option("--events <path>", "JSONL event log 路径")
+  .option("--store <kind>", "存储后端 jsonl/sqlite，默认 jsonl")
+  .description("记录决策卡片交互反馈：确认、忽略、请求更新")
+  .action(async (memoryId, opts) => {
+    if (!["confirm", "ignore", "update_requested"].includes(opts.action)) {
+      throw new Error("--action 必须是 confirm | ignore | update_requested");
+    }
+    const result = applyDecisionCardFeedback(await storeFromOptions(opts), {
+      memory_id: memoryId,
+      action: opts.action,
+      user_id: opts.userId,
+      message_id: opts.messageId,
+      note: opts.note,
+      now: opts.now,
+    });
+    console.log(JSON.stringify({ ok: result.ok, command: "card-feedback", result }, null, 2));
   });
 
 program

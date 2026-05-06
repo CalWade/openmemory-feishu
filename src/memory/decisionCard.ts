@@ -134,6 +134,14 @@ export function renderDecisionCardFeishuPayload(card: DecisionCard): FeishuCardP
   }
   elements.push(markdown(`**证据**\n来源：${card.evidence.channel}/${card.evidence.source_type}${card.evidence.chunk_ids?.length ? `\n片段：${card.evidence.chunk_ids.join(", ")}` : ""}\n摘录：${truncate(card.evidence.excerpt, 600)}`));
   elements.push({
+    tag: "action",
+    actions: [
+      feedbackButton("确认有效", "confirm", card.id, "primary"),
+      feedbackButton("忽略", "ignore", card.id, "default"),
+      feedbackButton("请求更新", "update_requested", card.id, "default"),
+    ],
+  });
+  elements.push({
     tag: "note",
     elements: [{ tag: "plain_text", content: `Memory ID: ${card.id}` }],
   });
@@ -149,6 +157,19 @@ export function renderDecisionCardFeishuPayload(card: DecisionCard): FeishuCardP
 
 function markdown(content: string): Record<string, unknown> {
   return { tag: "markdown", content };
+}
+
+function feedbackButton(text: string, action: string, memoryId: string, type: string): Record<string, unknown> {
+  return {
+    tag: "button",
+    text: { tag: "plain_text", content: text },
+    type,
+    value: {
+      kairos_action: "card_feedback",
+      feedback_action: action,
+      memory_id: memoryId,
+    },
+  };
 }
 
 function truncate(value: string, max: number): string {

@@ -47,6 +47,8 @@ describe("Decision Card", () => {
     expect(payload.header.template).toBe("blue");
     expect(JSON.stringify(payload)).toContain("被否方案");
     expect(JSON.stringify(payload)).toContain(atom.id);
+    expect(JSON.stringify(payload)).toContain("card_feedback");
+    expect(JSON.stringify(payload)).toContain("update_requested");
   });
 
   it("没有 raw_extraction 时从 content 兜底生成卡片", () => {

@@ -3,12 +3,14 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 const handler = async (event) => {
-  if (event?.type !== "message" || event?.action !== "received") return;
   const context = event.context ?? {};
   const workspaceDir = context.workspaceDir ?? process.cwd();
   const repoDir = resolveRepoDir(workspaceDir);
   const channel = String(context.channelId ?? context.metadata?.channel ?? context.metadata?.provider ?? "");
   const text = String(context.content ?? context.bodyForAgent ?? context.text ?? "").trim();
+  const feedback = extractCardFeedback(context);
+
+  if (!feedback && (event?.type !== "message" || event?.action !== "received")) return;
 
   log(repoDir, {
     at: new Date().toISOString(),
@@ -23,14 +25,15 @@ const handler = async (event) => {
   });
 
   if (channel && !channel.includes("feishu") && context.metadata?.provider !== "feishu" && context.metadata?.channel !== "feishu") return;
-  if (!text) return;
+  if (!text && !feedback) return;
 
   try {
     ensureBuilt(repoDir);
-    const [{ createMemoryStore }, { runFeishuWorkflow }, { ActivationThrottle }, { sendFeishuInteractiveWebhook, redactWebhookUrl }, { loadEnvValue }] = await Promise.all([
+    const [{ createMemoryStore }, { runFeishuWorkflow }, { ActivationThrottle }, { applyDecisionCardFeedback }, { sendFeishuInteractiveWebhook, redactWebhookUrl }, { loadEnvValue }] = await Promise.all([
       importFromRepo(repoDir, "dist/memory/storeFactory.js"),
       importFromRepo(repoDir, "dist/workflow/feishuWorkflow.js"),
       importFromRepo(repoDir, "dist/workflow/activationThrottle.js"),
+      importFromRepo(repoDir, "dist/memory/cardFeedback.js"),
       importFromRepo(repoDir, "dist/feishuWebhook.js"),
       importFromRepo(repoDir, "dist/llm/config.js"),
     ]);
@@ -39,6 +42,17 @@ const handler = async (event) => {
       db: resolve(repoDir, "data/memory.jsonl"),
       events: resolve(repoDir, "data/memory_events.jsonl"),
     });
+    if (feedback) {
+      const result = applyDecisionCardFeedback(store, feedback);
+      log(repoDir, {
+        at: new Date().toISOString(),
+        sessionKey: event.sessionKey,
+        channel,
+        card_feedback: result,
+      });
+      return;
+    }
+
     const output = runFeishuWorkflow(store, { text, project: process.env.KAIROS_PROJECT ?? "kairos" });
     let sent;
     let webhook;
@@ -80,6 +94,22 @@ const handler = async (event) => {
   }
 };
 
+function extractCardFeedback(context) {
+  const value = context.value ?? context.action?.value ?? context.metadata?.value ?? context.metadata?.action?.value;
+  if (!value || typeof value !== "object") return undefined;
+  if (value.kairos_action !== "card_feedback") return undefined;
+  const memory_id = String(value.memory_id ?? "");
+  const action = String(value.feedback_action ?? "");
+  if (!memory_id || !["confirm", "ignore", "update_requested"].includes(action)) return undefined;
+  return {
+    memory_id,
+    action,
+    user_id: context.userId ?? context.open_id ?? context.metadata?.user_id ?? context.metadata?.open_id,
+    message_id: context.messageId ?? context.message_id ?? context.metadata?.message_id,
+    note: typeof value.note === "string" ? value.note : undefined,
+  };
+}
+
 function importFromRepo(repoDir, relativePath) {
   return import(pathToFileURL(resolve(repoDir, relativePath)).href);
 }
@@ -96,6 +126,7 @@ function ensureBuilt(repoDir) {
     "dist/memory/jsonlStore.js",
     "dist/workflow/feishuWorkflow.js",
     "dist/workflow/activationThrottle.js",
+    "dist/memory/cardFeedback.js",
     "dist/feishuWebhook.js",
     "dist/llm/config.js",
   ];
