@@ -26,7 +26,8 @@ import { loadEnvValue } from "./llm/config.js";
 import { runFeishuWorkflow } from "./workflow/feishuWorkflow.js";
 import { ActivationThrottle } from "./workflow/activationThrottle.js";
 import { buildLarkCliPlan, checkLarkCliStatus, extractTextsFromLarkCliJson, preflightLarkCliPurpose, runLarkCliJson, runLarkCliText, toNormalizedMessages } from "./larkCliAdapter.js";
-import { threadMessages } from "./candidate/thread.js";
+import { threadMessages, type ConversationThread } from "./candidate/thread.js";
+import { linkThreadsWithLlm } from "./candidate/llmThreadLinker.js";
 import { buildCandidateWindowFromThread } from "./candidate/window.js";
 
 const program = new Command();
@@ -38,6 +39,22 @@ program
 
 async function storeFromOptions(opts: { db?: string; events?: string; store?: string }) {
   return createMemoryStore(opts);
+}
+
+function conversationThreadsFromLlm(messages: ReturnType<typeof toNormalizedMessages>, llmThreads: Array<{ id: string; message_ids: string[]; topic_hint?: string; confidence: number }>): ConversationThread[] {
+  const byId = new Map(messages.map((m) => [m.id, m]));
+  return llmThreads.map((thread) => {
+    const threadMessages = thread.message_ids.map((id) => byId.get(id)).filter((m): m is NonNullable<typeof m> => !!m).sort((a, b) => a.timestamp - b.timestamp);
+    return {
+      id: thread.id,
+      messages: threadMessages,
+      topic_hint: thread.topic_hint,
+      participants: [...new Set(threadMessages.map((m) => m.sender))],
+      start_time: threadMessages[0]?.timestamp ?? 0,
+      end_time: threadMessages[threadMessages.length - 1]?.timestamp ?? 0,
+      confidence: thread.confidence,
+    };
+  }).filter((thread) => thread.messages.length > 0);
 }
 
 function summarizeActivationActions(actions: string[]): Record<string, number> {
@@ -248,6 +265,7 @@ larkCli
   .option("--events <path>", "JSONL event log 路径")
   .option("--store <kind>", "存储后端 jsonl/sqlite，默认 jsonl")
   .option("--thread-gap <ms>", "会话解缠时间间隔阈值(ms)", "300000")
+  .option("--llm-thread-link", "使用 LLM 进行慢速会话解缠；失败时降级到启发式")
   .option("--enqueue-induction", "只将候选窗口加入 LLM slow induction 队列，不实时抽取")
   .option("--induction-queue <path>", "induction queue JSONL 路径", "data/induction_queue.jsonl")
   .description("调用官方 lark-cli 读取群消息，线程化→窗口化→抽取→入库")
@@ -264,7 +282,10 @@ larkCli
     const messages = toNormalizedMessages(raw, opts.chatId);
 
     // 3. 会话解缠：消息 → 线程
-    const threads = threadMessages(messages, { max_gap_ms: Number(opts.threadGap) });
+    const llmThreadLink = opts.llmThreadLink ? await linkThreadsWithLlm(messages) : undefined;
+    const threads = llmThreadLink && !llmThreadLink.degraded
+      ? conversationThreadsFromLlm(messages, llmThreadLink.threads)
+      : threadMessages(messages, { max_gap_ms: Number(opts.threadGap) });
 
     // 4. 每个线程构造 CandidateWindow
     const windows = threads.map((t) => buildCandidateWindowFromThread(t));
@@ -295,6 +316,7 @@ larkCli
         chat_id: opts.chatId,
         messages: messages.length,
         threads: threads.length,
+        thread_linker: llmThreadLink ? { degraded: llmThreadLink.degraded, error: llmThreadLink.error, prompt_version: llmThreadLink.prompt_version } : { degraded: false, method: "heuristic" },
         windows: windows.length,
         enqueued: jobs.length,
         jobs,
@@ -351,6 +373,7 @@ larkCli
       chat_id: opts.chatId,
       messages: messages.length,
       threads: threads.length,
+      thread_linker: llmThreadLink ? { degraded: llmThreadLink.degraded, error: llmThreadLink.error, prompt_version: llmThreadLink.prompt_version } : { degraded: false, method: "heuristic" },
       windows: windows.length,
       processed: results.filter((r) => !r.skipped).length,
       saved_total: results.filter((r) => r.saved).length,
