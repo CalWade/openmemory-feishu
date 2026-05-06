@@ -19,6 +19,7 @@ import { applyDecisionCardFeedback } from "./memory/cardFeedback.js";
 import { reconcileAndApplyMemoryAtom } from "./memory/reconcile.js";
 import { InductionQueue } from "./induction/queue.js";
 import { RefineQueue } from "./refine/queue.js";
+import { applyRefinePatch, triageRefineJob } from "./refine/processor.js";
 import { formatRecallAnswer } from "./memory/recallFormatter.js";
 import { redactWebhookUrl, sendFeishuInteractiveWebhook } from "./feishuWebhook.js";
 import { loadEnvValue } from "./llm/config.js";
@@ -924,6 +925,55 @@ refine
     const queue = new RefineQueue(opts.queue);
     const jobs = queue.list({ status: opts.status, limit: Number(opts.limit) });
     console.log(JSON.stringify({ ok: true, command: "refine list", total: jobs.length, jobs }, null, 2));
+  });
+
+refine
+  .command("run")
+  .option("--queue <path>", "refine queue JSONL 路径", "data/refine_queue.jsonl")
+  .option("--limit <limit>", "最多处理 pending job 数", "5")
+  .option("--db <path>", "SQLite/JSONL 数据路径")
+  .option("--events <path>", "JSONL event log 路径")
+  .option("--store <kind>", "存储后端 jsonl/sqlite，默认 jsonl")
+  .description("保守处理 pending refine job：只标记 awaiting_human_patch，不自动改内容")
+  .action(async (opts) => {
+    const queue = new RefineQueue(opts.queue);
+    const store = await storeFromOptions(opts);
+    const jobs = queue.list({ status: "pending", limit: Number(opts.limit) });
+    const results = [];
+    for (const job of jobs) {
+      const triage = triageRefineJob(store, job);
+      if (triage.ok) {
+        const done = queue.markDone(job, triage);
+        results.push({ job_id: job.id, status: done.status, triage });
+      } else {
+        const failed = queue.markFailed(job, triage.error ?? "unknown_error");
+        results.push({ job_id: job.id, status: failed.status, triage });
+      }
+    }
+    console.log(JSON.stringify({ ok: true, command: "refine run", processed: results.length, results }, null, 2));
+  });
+
+refine
+  .command("apply")
+  .argument("<memoryId>")
+  .requiredOption("--content <content>", "显式修正后的 MemoryAtom content")
+  .option("--job-id <jobId>", "关联 refine job id")
+  .option("--user-id <userId>", "执行修正的用户")
+  .option("--note <note>", "修正说明")
+  .option("--db <path>", "SQLite/JSONL 数据路径")
+  .option("--events <path>", "JSONL event log 路径")
+  .option("--store <kind>", "存储后端 jsonl/sqlite，默认 jsonl")
+  .description("显式应用 refine patch；不会自动生成内容")
+  .action(async (memoryId, opts) => {
+    const result = applyRefinePatch(await storeFromOptions(opts), {
+      memory_id: memoryId,
+      content: opts.content,
+      job_id: opts.jobId,
+      user_id: opts.userId,
+      note: opts.note,
+    });
+    console.log(JSON.stringify({ ok: result.ok, command: "refine apply", result }, null, 2));
+    if (!result.ok) process.exitCode = 1;
   });
 
 refine
