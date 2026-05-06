@@ -1,6 +1,9 @@
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { linkThreadsWithLlm } from "../candidate/llmThreadLinker.js";
+import { threadMessages } from "../candidate/thread.js";
+import type { NormalizedMessage } from "../candidate/types.js";
 import { extractDecisionWithLlm } from "../extractor/llmDecisionExtractor.js";
 import { extractDecisionBaseline } from "../extractor/ruleDecisionExtractor.js";
 import { extractionToMemoryAtom } from "../extractor/toMemoryAtom.js";
@@ -31,6 +34,42 @@ export async function runLlmDecisionExtractionEval(path = "eval/datasets/llm-dec
     }
   }
   return summarize("llm-decision-extraction", results);
+}
+
+export async function runThreadLinkingEval(path = "eval/datasets/thread-linking.jsonl"): Promise<EvalResult & { aggregate: Record<string, unknown> }> {
+  const cases = readJsonl<any>(path);
+  const results = [];
+  const heuristicScores = [] as number[];
+  const llmScores = [] as number[];
+  for (const item of cases) {
+    const messages = item.messages.map((m: any) => normalizeEvalMessage(m));
+    const expected = normalizeClusters(item.expected_threads);
+    const heuristic = normalizeClusters(threadMessages(messages).map((t) => t.messages.map((m) => m.id)));
+    const llmResult = await linkThreadsWithLlm(messages, {
+      config: { provider: "openai_compatible", baseUrl: "https://example.com/v1", apiKey: "test", model: "mock" },
+      fetchImpl: mockThreadLinkFetch(item.mock_llm_threads),
+    });
+    const llm = normalizeClusters(llmResult.threads.map((t) => t.message_ids));
+    const heuristicF1 = pairwiseF1(expected, heuristic);
+    const llmF1 = pairwiseF1(expected, llm);
+    heuristicScores.push(heuristicF1);
+    llmScores.push(llmF1);
+    const passed = llmF1 >= heuristicF1 && llmF1 >= (item.min_llm_f1 ?? 0.9);
+    results.push({
+      id: item.id,
+      passed,
+      actual: { expected, heuristic, llm, heuristicF1, llmF1 },
+      reason: passed ? undefined : "LLM thread linking 未达到期望或未优于启发式",
+    });
+  }
+  return {
+    ...summarize("thread-linking", results),
+    aggregate: {
+      heuristic_avg_f1: average(heuristicScores),
+      llm_avg_f1: average(llmScores),
+      delta: average(llmScores) - average(heuristicScores),
+    },
+  };
 }
 
 export function runDecisionExtractionEval(path = "eval/datasets/decision-extraction.jsonl"): EvalResult {
@@ -137,6 +176,62 @@ export function runRecallEval(path = "eval/datasets/recall.jsonl"): EvalResult {
 
 export function runAllCoreEvals(): EvalResult[] {
   return [runDecisionExtractionEval(), runConflictUpdateEval(), runRecallEval(), runAntiInterferenceEval(), runRemindEval(), runFeishuWorkflowEval()];
+}
+
+function normalizeEvalMessage(m: any): NormalizedMessage {
+  return {
+    id: String(m.id),
+    sender: String(m.sender ?? "unknown"),
+    text: String(m.text ?? ""),
+    timestamp: Number(m.timestamp ?? 0),
+    chat_id: m.chat_id,
+    thread_id: m.thread_id,
+    reply_to: m.reply_to,
+    mentions: [],
+    links: [],
+    doc_tokens: [],
+    task_ids: [],
+    source: "feishu_chat",
+  };
+}
+
+function mockThreadLinkFetch(threads: unknown): typeof fetch {
+  return (async () => new Response(JSON.stringify({ choices: [{ message: { content: JSON.stringify({ threads }) } }] }), { status: 200 })) as typeof fetch;
+}
+
+function normalizeClusters(clusters: string[][]): string[][] {
+  return clusters
+    .map((cluster) => [...new Set(cluster)].sort())
+    .filter((cluster) => cluster.length > 0)
+    .sort((a, b) => a.join(",").localeCompare(b.join(",")));
+}
+
+function pairwiseF1(expected: string[][], actual: string[][]): number {
+  const exp = pairSet(expected);
+  const act = pairSet(actual);
+  if (exp.size === 0 && act.size === 0) return 1;
+  let tp = 0;
+  for (const p of act) if (exp.has(p)) tp++;
+  const precision = act.size === 0 ? 0 : tp / act.size;
+  const recall = exp.size === 0 ? 0 : tp / exp.size;
+  if (precision + recall === 0) return 0;
+  return 2 * precision * recall / (precision + recall);
+}
+
+function pairSet(clusters: string[][]): Set<string> {
+  const pairs = new Set<string>();
+  for (const cluster of clusters) {
+    for (let i = 0; i < cluster.length; i++) {
+      for (let j = i + 1; j < cluster.length; j++) {
+        pairs.add(`${cluster[i]}::${cluster[j]}`);
+      }
+    }
+  }
+  return pairs;
+}
+
+function average(values: number[]): number {
+  return values.length ? values.reduce((a, b) => a + b, 0) / values.length : 0;
 }
 
 function window(text: string): CandidateWindow {

@@ -5,7 +5,7 @@ import { MemoryAtomSchema } from "./memory/schema.js";
 import { createManualMemory } from "./memory/factory.js";
 import { createMemoryStore } from "./memory/storeFactory.js";
 import { loadSmokeCases, summarizeSmokeCases } from "./eval/smoke.js";
-import { runAllCoreEvals, runAntiInterferenceEval, runConflictUpdateEval, runDecisionExtractionEval, runFeishuWorkflowEval, runLlmDecisionExtractionEval, runRecallEval, runRemindEval } from "./eval/runner.js";
+import { runAllCoreEvals, runAntiInterferenceEval, runConflictUpdateEval, runDecisionExtractionEval, runFeishuWorkflowEval, runLlmDecisionExtractionEval, runRecallEval, runRemindEval, runThreadLinkingEval } from "./eval/runner.js";
 import { createAtomFromFact, extractFacts, reconcileFact } from "./extractor/mockExtractor.js";
 import { normalizeFeishuChatExport } from "./candidate/feishuChatExport.js";
 import { segmentMessages } from "./candidate/segment.js";
@@ -1089,7 +1089,7 @@ program
   .command("eval")
   .option("--smoke", "run smoke benchmark")
   .option("--core", "run core benchmark: decision extraction + conflict update + recall")
-  .option("--suite <suite>", "run a specific suite: decision-extraction | conflict-update | recall | anti-interference | remind | feishu-workflow | llm-decision-extraction")
+  .option("--suite <suite>", "run a specific suite: decision-extraction | conflict-update | recall | anti-interference | remind | feishu-workflow | llm-decision-extraction | thread-linking")
   .description("Run benchmarks")
   .action(async (opts) => {
     if (opts.smoke) {
@@ -1117,7 +1117,9 @@ program
                   ? runFeishuWorkflowEval()
                   : opts.suite === "llm-decision-extraction"
                     ? await runLlmDecisionExtractionEval()
-                    : undefined;
+                    : opts.suite === "thread-linking"
+                      ? await runThreadLinkingEval()
+                      : undefined;
       if (!result) throw new Error(`未知 suite: ${opts.suite}`);
       console.log(JSON.stringify({ ok: true, command: "eval", result }, null, 2));
       return;
