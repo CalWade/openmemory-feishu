@@ -26,6 +26,7 @@ import { redactWebhookUrl, sendFeishuInteractiveWebhook } from "./feishuWebhook.
 import { loadEnvValue } from "./llm/config.js";
 import { runFeishuWorkflow } from "./workflow/feishuWorkflow.js";
 import { ActivationThrottle } from "./workflow/activationThrottle.js";
+import { buildEngineDashboardData, serveEngineDashboard, writeEngineDashboardHtml } from "./visualization/dashboard.js";
 import { buildLarkCliPlan, checkLarkCliStatus, extractTextsFromLarkCliJson, preflightLarkCliPurpose, runLarkCliJson, runLarkCliText, toNormalizedMessages } from "./larkCliAdapter.js";
 import { threadMessages, type ConversationThread } from "./candidate/thread.js";
 import { linkThreadsWithLlm } from "./candidate/llmThreadLinker.js";
@@ -1215,6 +1216,39 @@ program
       return;
     }
     console.log(JSON.stringify({ ok: true, command: "eval", smoke: false, cases: 0 }, null, 2));
+  });
+
+program
+  .command("dashboard")
+  .option("--serve", "启动只读 dashboard HTTP 服务")
+  .option("--port <port>", "服务端口", "8787")
+  .option("--output <path>", "输出自包含 HTML 文件", "runs/kairos-engine-dashboard.html")
+  .option("--events <path>", "Memory EventLog 路径", "data/memory_events.jsonl")
+  .option("--induction-queue <path>", "Induction queue JSONL 路径", "data/induction_queue.jsonl")
+  .option("--refine-queue <path>", "Refine queue JSONL 路径", "data/refine_queue.jsonl")
+  .option("--activation-throttle <path>", "Activation throttle JSONL 路径", "data/activation_throttle.jsonl")
+  .option("--hook-log <path>", "OpenClaw hook log 路径", "runs/kairos-feishu-ingress.jsonl")
+  .option("--db <path>", "SQLite/JSONL 数据路径")
+  .option("--store <kind>", "存储后端 jsonl/sqlite，默认 jsonl")
+  .description("生成/启动 Kairos 引擎工作可视化页面；只读，不污染飞书群")
+  .action(async (opts) => {
+    const store = await storeFromOptions(opts);
+    const options = {
+      store,
+      eventsPath: opts.events,
+      inductionQueuePath: opts.inductionQueue,
+      refineQueuePath: opts.refineQueue,
+      activationThrottlePath: opts.activationThrottle,
+      hookLogPath: opts.hookLog,
+    };
+    if (opts.serve) {
+      const server = await serveEngineDashboard({ ...options, port: Number(opts.port), refreshSeconds: 2 });
+      console.log(JSON.stringify({ ok: true, command: "dashboard", mode: "serve", url: server.url }, null, 2));
+      return;
+    }
+    const data = buildEngineDashboardData(options);
+    writeEngineDashboardHtml(data, opts.output);
+    console.log(JSON.stringify({ ok: true, command: "dashboard", mode: "write", output: opts.output, memories: data.memories.length, induction_jobs: data.induction_jobs.length, refine_jobs: data.refine_jobs.length }, null, 2));
   });
 
 program
