@@ -1,92 +1,101 @@
-# Kairos OpenClaw 安装说明
+# Kairos 安装与接入
 
-Kairos 以 OpenClaw hook pack 形式分发。压缩包内包含：
+当前推荐运行方式：**lark-cli Runtime 模式**。
 
-- `package.json`：声明 `openclaw.hooks`
-- `hooks/kairos-feishu-ingress/`：OpenClaw message:received hook
-- `dist/`：已编译的 Kairos JS 代码
-- `README.md`：项目说明
-
-## 安装
+## 1. 安装项目
 
 ```bash
-openclaw plugins install ./memoryops-0.1.0.tgz
-openclaw hooks enable kairos-feishu-ingress
-openclaw gateway restart
-openclaw hooks check
+git clone https://github.com/CalWade/Kairos.git
+cd Kairos
+npm install
+npm run build
 ```
 
-## 使用方式
+## 2. 安装并授权 lark-cli
 
-安装并启用后，OpenClaw Gateway 收到飞书消息时会触发：
+```bash
+npm install -g @larksuite/cli
+lark-cli auth login --recommend --profile kairos-alt
+```
+
+授权注意事项：
+
+- 按 lark-cli 官方页面完成授权；
+- `auth login` 命令需要保持运行，直到浏览器授权完成并返回成功；
+- 不要反复运行 `lark-cli config init --new`，避免创建多个 CLI 应用。
+
+## 3. 获取目标群 chat_id
+
+```bash
+lark-cli im +chat-list --format json --profile kairos-alt
+```
+
+或用消息搜索结果里的 `chat_id`。
+
+## 4. 配置目标群机器人 webhook
+
+在目标飞书群添加自定义机器人，复制 webhook：
 
 ```text
-message:received -> kairos-feishu-ingress -> Kairos feishu-workflow
+https://open.feishu.cn/open-apis/bot/v2/hook/xxxx
 ```
 
-默认行为是只记录工作流判断结果，不主动发送飞书卡片：
+webhook 必须来自同一个目标群。
+
+## 5. 运行接入向导
+
+```bash
+npm run setup:lark-runtime -- \
+  --profile kairos-alt \
+  --chat-id oc_xxx \
+  --feishu-webhook "https://open.feishu.cn/open-apis/bot/v2/hook/xxx" \
+  --test-read \
+  --test-webhook
+```
+
+该命令会检查 lark-cli、profile、chat_id、webhook，并写入 `.env`。
+
+## 6. 启动
+
+终端 1：
+
+```bash
+npm run dashboard
+```
+
+终端 2：
+
+```bash
+npm run lark-runtime
+```
+
+浏览器打开：
 
 ```text
-runs/kairos-feishu-ingress.jsonl
+http://127.0.0.1:8787
 ```
 
-如果要允许自动发送飞书决策卡片，需要显式配置：
+## 7. 调试
+
+只跑一轮 runtime：
 
 ```bash
-export KAIROS_HOOK_SEND_FEISHU=1
-export KAIROS_FEISHU_WEBHOOK_URL="https://open.feishu.cn/open-apis/bot/v2/hook/..."
+npm run lark-runtime:once
 ```
 
-## 验证
-
-1. 写入一条测试决策：
+运行核心评测：
 
 ```bash
-memoryops extract-decision --project kairos --write \
-  --text "张三：最终决定 MVP 阶段使用 SQLite 作为当前状态库，同时保留 JSONL Event Log。王五：PostgreSQL 对复赛 demo 来说部署成本太高。"
+npm run eval:core
 ```
 
-2. 在飞书中发送：
+## 8. OpenClaw 的角色
 
-```text
-要不我们还是用 PostgreSQL？
-```
+Kairos 当前不以 OpenClaw hook 作为默认飞书消息入口。OpenClaw 在本项目中体现为：
 
-3. 查看日志：
+- Agent 宿主；
+- 项目部署和配置控制面；
+- Runtime / Dashboard / Benchmark 的运行和排障环境；
+- 比赛展示中的自动化运维入口。
 
-```bash
-tail -f runs/kairos-feishu-ingress.jsonl
-```
-
-期望看到：
-
-```json
-{"action":"push_decision_card"}
-```
-
-## 当前重要限制
-
-当前 hook 默认使用 JSONL portable store，不依赖 `better-sqlite3` native binding，因此通过 OpenClaw `--ignore-scripts` 安装后也可运行。
-
-如需在本地开发中使用 SQLite 后端，可显式设置：
-
-```bash
-KAIROS_STORE=sqlite
-```
-
-SQLite 模式依赖 `better-sqlite3` native binding，适合开发仓库环境，不作为 hook pack 默认运行模式。
-
-
-## GitHub 链接自动安装 / Agent 自描述
-
-如果用户只提供 GitHub 链接，OpenClaw/Agent 应先读取：
-
-```text
-OPENCLAW.md
-openclaw.setup.json
-docs/lark-cli-runbook.md
-```
-
-然后执行：克隆仓库 → `npm install` → `npm run build` → `openclaw plugins install .` → lark-cli profile 授权 → `memoryops lark-cli e2e-chat` 验证。
-
-机器可读安装计划见 `openclaw.setup.json`。
+飞书数据接入由官方 `lark-cli` 负责。

@@ -52,9 +52,10 @@
     "docs": [
       "OPENCLAW.md",
       "INSTALL.md",
+      "QUICKSTART.md",
       "docs/lark-cli-runbook.md",
-      "docs/openclaw-hook-install.md",
-      "docs/openclaw-agent-checklist.md"
+      "docs/demo-script.md",
+      "docs/benchmark-report.md"
     ]
   },
   "files": [
@@ -65,10 +66,11 @@
     "LICENSE",
     "package.json",
     "INSTALL.md",
-    "docs/openclaw-hook-install.md",
     "OPENCLAW.md",
     "openclaw.setup.json",
     "docs/lark-cli-runbook.md",
-    "docs/openclaw-agent-checklist.md"
+    "docs/demo-script.md",
+    "docs/benchmark-report.md",
+    "docs/archive"
   ]
 }

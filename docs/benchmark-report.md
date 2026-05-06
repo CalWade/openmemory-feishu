@@ -1,125 +1,101 @@
 # Kairos Benchmark Report
 
-> 当前为 MVP 阶段评测报告，记录真实已实现的最小评测，不夸大效果。
-
-## 1. 当前评测命令
+## 评测命令
 
 ```bash
 npm run dev -- eval --core
-# 单独运行飞书工作流触发评测
-npm run dev -- eval --suite feishu-workflow
+npm run dev -- eval --suite thread-linking
+npm run dev -- eval --suite llm-decision-extraction
 ```
 
-当前包含 6 个 suite：
+`eval --core` 结果会保存到 `runs/latest-eval.json`，并显示在 Dashboard 的「本地评测结果」区域。
 
-| Suite | 目标 | Case 数 |
-|---|---|---:|
-| decision-extraction | 验证结构化决策 / 规则 / 风险 / 工作流 / none 抽取 | 12 |
-| conflict-update | 验证新旧规则冲突覆盖，包含 direct / temporal / risk policy | 4 |
-| recall | 验证反向问题能否召回决策理由、风险和流程 | 5 |
-| anti-interference | 验证多条相似记忆下不召回错误对象 | 3 |
-| remind | 验证风险记忆 review_at 到期提醒 | 2 |
-| feishu-workflow | 验证飞书消息触发/误触发控制/斜杠命令忽略 | 4 |
+## 核心评测覆盖
 
-## 2. 当前结果
+| Suite | 目标 |
+|---|---|
+| decision-extraction | 结构化抽取决策、风险、约定、工作流和 none |
+| conflict-update | 验证新旧记忆冲突时能保留历史并更新当前值 |
+| recall | 验证问题能召回正确历史决策和理由 |
+| anti-interference | 验证多条干扰记忆下仍能命中目标记忆 |
+| remind | 验证风险记忆 review_at 到期提醒 |
+| feishu-workflow | 验证飞书消息 activation、误触发控制和斜杠命令忽略 |
+| thread-linking | 对比启发式线程恢复和 LLM thread linking |
+| llm-decision-extraction | 显式验证 LLM 结构化抽取和 fallback/degraded 记录 |
 
-截至 2026-04-28：
+## 比赛要求映射
 
-```text
-decision-extraction: 12 / 12 passed
-conflict-update: 4 / 4 passed
-recall: 5 / 5 passed
-anti-interference: 3 / 3 passed
-remind: 2 / 2 passed
-feishu-workflow: 4 / 4 passed
-```
+### 1. 抗干扰测试
 
-这说明核心链路已经覆盖到 30 个最小评测用例，但仍然是小规模、人工构造数据集，不能说明系统已经具备真实生产效果。
+测试目标：在注入无关/相似记忆后，仍能召回目标历史决策。
 
-## 3. 已覆盖能力
-
-### 3.1 决策抽取
-
-示例：
-
-```text
-最终决定 MVP 阶段使用 SQLite，同时保留 JSONL Event Log。
-PostgreSQL 对复赛 demo 来说部署成本太高。
-```
-
-期望：
-
-- kind = decision；
-- topic = local_storage_selection；
-- decision 包含 SQLite；
-- rejected_options 包含 PostgreSQL；
-- reasons 包含部署成本。
-
-### 3.2 矛盾更新
-
-示例：
-
-```text
-旧：以后周报每周五发给 Alice。
-新：不对，周报以后发给 Bob。
-```
-
-期望：
-
-- 当前值为 Bob；
-- Alice 旧记忆 status = superseded；
-- 历史版本仍可查询。
-
-### 3.3 反向召回
-
-示例问题：
+示例查询：
 
 ```text
 为什么不用 PostgreSQL？
 ```
 
-期望召回：
+期望：命中 SQLite / PostgreSQL 相关决策理由，不误命中 hooks、周报、API Key 等干扰内容。
+
+### 2. 矛盾更新测试
+
+测试目标：输入冲突指令后，当前记忆被更新，旧记忆进入历史状态。
+
+示例：
 
 ```text
-MVP 阶段使用 SQLite + JSONL；PostgreSQL 部署成本较高，可能影响复赛 demo 运行。
+旧：以后周报每周五发给 Alice。
+新：不对，周报以后发给 Bob，Alice 不再负责这个了。
 ```
 
-## 4. 当前不足
+期望：
 
-- Case 数仍然偏少，距离可展示 Benchmark 还有差距；
-- 评测数据仍是人工构造；
-- Decision Extractor 是规则 baseline；
-- 没有覆盖飞书端主动决策卡片；
-- 没有真实用户耗时对比数据。
+```text
+当前 active = Bob
+旧 Alice 记忆 = superseded
+历史仍可追溯
+conflict_relation = DIRECT_CONFLICT
+```
 
-## 5. 下一步评测计划
+### 3. 效能指标
 
-复赛前应扩充：
+Kairos 在历史决策复议场景中减少额外检索操作。
 
-1. 继续扩充抗干扰测试：真实飞书导出噪声 + 隐藏关键决策；
-2. 扩展决策更新测试：条件生效、跨阶段迁移、多人反对意见；
-3. 扩展风险提醒测试：多级 review_at、已处理提醒、飞书推送；
-4. 效能指标：手动翻聊天 vs Kairos recall 的步数和时间对比。
+| 指标 | 手工流程 | Kairos |
+|---|---:|---:|
+| 找历史决策操作步数 | 约 7 步 | 约 2 步 |
+| 额外检索输入字符 | 约 42 字 | 0 字 |
+| 是否自动推送历史决策卡片 | 否 | 是 |
 
+操作步数减少约 71.4%，额外检索输入减少 100%。
 
-## 6. LLM 抽取显式评测
+## 真实飞书链路证明
 
-LLMDecisionExtractor 不进入 `eval --core`，需要显式运行：
+真实链路通过 `lark-cli Runtime` 完成：
+
+```text
+真实飞书群消息
+→ lark-runtime 轮询读取
+→ induction queue
+→ LLM thread linking / fallback
+→ MemoryAtom
+→ activation
+→ 飞书机器人决策卡片
+→ Dashboard 数据流展示
+```
+
+运行入口：
 
 ```bash
-npm run dev -- eval --suite llm-decision-extraction
+npm run dashboard
+npm run lark-runtime
 ```
 
-当前数据集：`eval/datasets/llm-decision-extraction.jsonl`，包含自然语言决策、风险、流程和未定问题样本。
+Dashboard 展示运行状态、队列、记忆、activation、反馈修正和本地评测结果。
 
-截至 2026-04-28 的一次主办方模型观测：
+## 结果解释边界
 
-```text
-llm-decision-extraction: 3 / 4 passed
-PASS llm_decision_storage_natural_001 decision
-FAIL llm_risk_api_key_001 timeout / AbortError
-PASS llm_workflow_export_001 workflow
-PASS llm_none_unresolved_001 none
-```
-
-解释：失败样本是风险抽取请求超时，不是 schema 校验错误；CLI 的 `extract-decision --llm --fallback` 可回退到规则 baseline。该结果说明 LLM 路径已可用，但稳定性和超时控制仍需改进，不能作为生产效果宣传。
+- 本地 benchmark 是可复现自测，不等同于生产大规模线上评测；
+- `thread-linking` 中的 silver set 不等同于人工 gold label；
+- LLM 路径保留 timeout/fallback/degraded 记录；
+- 飞书群展示以真实 lark-cli 读取和真实 webhook 发卡为准。

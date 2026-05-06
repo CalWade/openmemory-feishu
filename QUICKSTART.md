@@ -1,6 +1,6 @@
 # Kairos 快速接入飞书群（lark-cli Runtime 模式）
 
-> 当前推荐主线：`lark-cli Runtime`。OpenClaw hook 是历史/候选路径，不是当前 P0 运行方式。
+> 当前运行方式：`lark-cli Runtime`。飞书数据由官方 lark-cli 接入，OpenClaw 负责 Agent 宿主和运行控制。
 
 ## 1. 安装
 

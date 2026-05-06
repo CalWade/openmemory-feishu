@@ -1,12 +1,11 @@
 {
-  "schema": "kairos.openclaw.setup.v1",
+  "schema": "kairos.openclaw.setup.v2",
   "name": "Kairos",
   "packageName": "memoryops",
   "repository": "https://github.com/CalWade/Kairos",
-  "summary": "Feishu/OpenClaw long-term collaboration memory engine with lark-cli as official data ingress.",
+  "summary": "Feishu collaboration memory engine using lark-cli Runtime, Dashboard visualization, and OpenClaw as Agent host.",
   "requirements": {
     "node": ">=22",
-    "openclaw": "installed",
     "globalTools": [
       {
         "name": "lark-cli",
@@ -20,56 +19,46 @@
       "git clone https://github.com/CalWade/Kairos.git kairos",
       "cd kairos",
       "npm install",
-      "npm run build",
-      "openclaw plugins install .",
-      "openclaw gateway restart"
-    ],
-    "fromPackedArchive": [
-      "openclaw plugins install ./memoryops-0.1.0.tgz",
-      "openclaw gateway restart"
+      "npm run build"
     ]
   },
   "interactiveSteps": [
     {
-      "id": "lark_cli_profile",
-      "title": "Create lark-cli profile",
-      "command": "lark-cli config init --new --name kairos-alt",
-      "userAction": "Open the printed Feishu URL with the target account and confirm app setup."
-    },
-    {
       "id": "lark_cli_auth",
       "title": "Authorize lark-cli user identity",
       "command": "lark-cli auth login --recommend --profile kairos-alt",
-      "userAction": "Open the printed Feishu OAuth device URL and confirm authorization."
+      "userAction": "Follow the official lark-cli auth page. Keep the command running until authorization succeeds. Do not repeatedly run config init --new."
+    },
+    {
+      "id": "runtime_setup",
+      "title": "Configure monitored Feishu group",
+      "command": "npm run setup:lark-runtime -- --profile kairos-alt --chat-id <oc_xxx> --feishu-webhook <webhook> --test-read --test-webhook",
+      "userAction": "Provide target chat_id and the custom bot webhook from the same Feishu group."
     }
   ],
   "postInstallChecks": [
-    "memoryops setup-wizard --profile kairos-alt",
-    "memoryops doctor --profile kairos-alt --pretty",
-    "memoryops lark-cli status --check-auth --profile kairos-alt",
-    "memoryops lark-cli preflight --purpose chat_messages --profile kairos-alt",
-    "npm run dev -- eval --core"
+    "npm run dashboard:static",
+    "npm run dev -- eval --core",
+    "KAIROS_CHAT_ID=<oc_xxx> KAIROS_LARK_PROFILE=kairos-alt npm run lark-runtime:once"
   ],
-  "primaryDemo": {
-    "needs": [
-      "chat_id"
-    ],
-    "command": "memoryops lark-cli e2e-chat --chat-id <oc_xxx> --profile kairos-alt --project kairos --trigger-text \"要不我们还是用 PostgreSQL？\"",
-    "success": "workflow.action == push_decision_card",
-    "doctorCommand": "memoryops doctor --profile kairos-alt --chat-id <oc_xxx> --e2e",
-    "prettyDoctorCommand": "memoryops doctor --profile kairos-alt --chat-id <oc_xxx> --e2e --pretty",
-    "npmScript": "KAIROS_DEMO_CHAT_ID=<oc_xxx> npm run demo:lark-cli-chat"
+  "runtime": {
+    "dashboard": "npm run dashboard",
+    "larkRuntime": "npm run lark-runtime",
+    "dryRun": "npm run lark-runtime:once"
   },
   "safeDefaults": {
     "store": "jsonl",
-    "autoSendFeishuCard": false,
+    "dataIngress": "lark-cli runtime",
+    "dashboard": "read-only",
     "requiresExplicitWebhookEnv": true
   },
   "docs": [
-    "OPENCLAW.md",
+    "README.md",
+    "QUICKSTART.md",
     "INSTALL.md",
+    "OPENCLAW.md",
     "docs/lark-cli-runbook.md",
-    "docs/openclaw-hook-install.md",
-    "docs/openclaw-agent-checklist.md"
+    "docs/demo-script.md",
+    "docs/benchmark-report.md"
   ]
 }
