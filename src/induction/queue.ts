@@ -1,5 +1,6 @@
 import { existsSync, mkdirSync, readFileSync, appendFileSync } from "node:fs";
 import { dirname } from "node:path";
+import type { NormalizedMessage } from "../candidate/types.js";
 import type { CandidateWindow } from "../candidate/window.js";
 import { makeMemoryId } from "../memory/id.js";
 
@@ -10,6 +11,7 @@ export type InductionJob = {
   project?: string;
   status: InductionJobStatus;
   window: CandidateWindow;
+  context_messages?: NormalizedMessage[];
   created_at: string;
   updated_at: string;
   attempts: number;
@@ -30,7 +32,7 @@ export class InductionQueue {
     if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
   }
 
-  enqueue(window: CandidateWindow, options: { project?: string; maxAttempts?: number; now?: string } = {}): InductionJob {
+  enqueue(window: CandidateWindow, options: { project?: string; maxAttempts?: number; now?: string; contextMessages?: NormalizedMessage[] } = {}): InductionJob {
     const now = options.now ?? new Date().toISOString();
     const id = makeInductionJobId(window, options.project);
     const existing = this.get(id);
@@ -42,6 +44,7 @@ export class InductionQueue {
       project: options.project,
       status: "pending",
       window,
+      context_messages: options.contextMessages,
       created_at: now,
       updated_at: now,
       attempts: existing?.attempts ?? 0,

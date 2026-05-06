@@ -33,10 +33,11 @@ function withQueue(fn: (queue: InductionQueue) => void) {
 
 describe("InductionQueue", () => {
   it("enqueue 同一窗口是幂等的", () => withQueue((queue) => {
-    const a = queue.enqueue(win(), { project: "kairos", now: "2026-05-06T00:00:00.000Z" });
+    const a = queue.enqueue(win(), { project: "kairos", now: "2026-05-06T00:00:00.000Z", contextMessages: [{ id: "om_1", sender: "u", text: "最终决定使用 SQLite。", timestamp: 1, mentions: [], links: [], doc_tokens: [], task_ids: [], source: "feishu_chat" }] });
     const b = queue.enqueue(win(), { project: "kairos", now: "2026-05-06T01:00:00.000Z" });
     expect(a.id).toBe(b.id);
     expect(queue.list({ status: "pending" })).toHaveLength(1);
+    expect(a.context_messages?.[0].id).toBe("om_1");
   }));
 
   it("markDone 后不再出现在 pending", () => withQueue((queue) => {

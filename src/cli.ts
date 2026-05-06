@@ -10,7 +10,7 @@ import { createAtomFromFact, extractFacts, reconcileFact } from "./extractor/moc
 import { normalizeFeishuChatExport } from "./candidate/feishuChatExport.js";
 import { segmentMessages } from "./candidate/segment.js";
 import { mergeAdjacentScoredSegments, scoreSegments } from "./candidate/salience.js";
-import { buildCandidateWindows } from "./candidate/window.js";
+import { buildCandidateWindows, type CandidateWindow } from "./candidate/window.js";
 import { extractDecisionBaseline } from "./extractor/ruleDecisionExtractor.js";
 import { extractDecisionWithLlm } from "./extractor/llmDecisionExtractor.js";
 import { extractionToMemoryAtom } from "./extractor/toMemoryAtom.js";
@@ -39,6 +39,25 @@ program
 
 async function storeFromOptions(opts: { db?: string; events?: string; store?: string }) {
   return createMemoryStore(opts);
+}
+
+function refineWindowWithLlmThread(window: CandidateWindow, messages: ReturnType<typeof toNormalizedMessages>, llmThreads: Array<{ id: string; message_ids: string[]; topic_hint?: string; confidence: number }>): CandidateWindow {
+  const evidenceSet = new Set(window.evidence_message_ids);
+  const byId = new Map(messages.map((m) => [m.id, m]));
+  const best = llmThreads
+    .map((thread) => ({ thread, overlap: thread.message_ids.filter((id) => evidenceSet.has(id)).length }))
+    .sort((a, b) => b.overlap - a.overlap || b.thread.confidence - a.thread.confidence)[0];
+  if (!best || best.overlap === 0) return window;
+  const selected = best.thread.message_ids.map((id) => byId.get(id)).filter((m): m is NonNullable<typeof m> => !!m).sort((a, b) => a.timestamp - b.timestamp);
+  if (!selected.length) return window;
+  return {
+    ...window,
+    denoised_text: selected.map((m) => `${m.sender}：${m.text}`).join("\n"),
+    evidence_message_ids: selected.map((m) => m.id),
+    topic_hint: best.thread.topic_hint ?? window.topic_hint,
+    salience_signals: [...new Set([...window.salience_signals, "llm_thread_linked_context"])],
+    dropped_message_ids: messages.filter((m) => !best.thread.message_ids.includes(m.id)).map((m) => m.id),
+  };
 }
 
 function conversationThreadsFromLlm(messages: ReturnType<typeof toNormalizedMessages>, llmThreads: Array<{ id: string; message_ids: string[]; topic_hint?: string; confidence: number }>): ConversationThread[] {
@@ -308,7 +327,7 @@ larkCli
           estimated_tokens: win.estimated_tokens,
           source_channel: "feishu",
           source_type: "feishu_message",
-        }, { project: opts.project }));
+        }, { project: opts.project, contextMessages: messages }));
       console.log(JSON.stringify({
         ok: true,
         command: "lark-cli ingest-chat",
@@ -1039,6 +1058,7 @@ induction
   .option("--limit <limit>", "最多处理 pending job 数", "5")
   .option("--project <project>", "项目名")
   .option("--fallback", "LLM 失败时回退规则 baseline")
+  .option("--llm-thread-link", "在后台 induction 中使用 LLM 重新链接/补全窗口 evidence，失败则 degraded")
   .option("--db <path>", "SQLite/JSONL 数据路径")
   .option("--events <path>", "JSONL event log 路径")
   .option("--store <kind>", "存储后端 jsonl/sqlite，默认 jsonl")
@@ -1050,11 +1070,13 @@ induction
     const results = [];
     for (const job of jobs) {
       try {
-        const result = await extractDecisionWithLlm(job.window, { fallback: !!opts.fallback });
-        const atom = extractionToMemoryAtom(result, job.window, job.project ?? opts.project);
+        const threadLink = opts.llmThreadLink && job.context_messages?.length ? await linkThreadsWithLlm(job.context_messages, { timeoutMs: 120_000 }) : undefined;
+        const window = threadLink && !threadLink.degraded ? refineWindowWithLlmThread(job.window, job.context_messages ?? [], threadLink.threads) : job.window;
+        const result = await extractDecisionWithLlm(window, { fallback: !!opts.fallback });
+        const atom = extractionToMemoryAtom(result, window, job.project ?? opts.project);
         const reconcile = atom ? reconcileAndApplyMemoryAtom(store, atom) : { action: "NONE", reason: "extractor_returned_none" };
-        const done = queue.markDone(job, { extraction: result, atom, reconcile });
-        results.push({ job_id: job.id, status: done.status, extraction_kind: result.kind, reconcile });
+        const done = queue.markDone(job, { extraction: result, atom, reconcile, thread_linker: threadLink ? { degraded: threadLink.degraded, error: threadLink.error, prompt_version: threadLink.prompt_version } : undefined });
+        results.push({ job_id: job.id, status: done.status, extraction_kind: result.kind, thread_linker: threadLink ? { degraded: threadLink.degraded, error: threadLink.error } : undefined, reconcile });
       } catch (error) {
         const failed = queue.markFailed(job, error instanceof Error ? error.message : String(error));
         results.push({ job_id: job.id, status: failed.status, error: failed.error, attempts: failed.attempts });
