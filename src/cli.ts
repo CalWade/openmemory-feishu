@@ -110,6 +110,13 @@ function writeJsonl(path: string, items: unknown[], append: boolean) {
   writeFileSync(path, body, { encoding: "utf8", flag: append ? "a" : "w" });
 }
 
+function saveEvalOutput(path: string | undefined, output: unknown) {
+  if (!path) return;
+  const dir = dirname(path);
+  if (dir && dir !== "." && !existsSync(dir)) mkdirSync(dir, { recursive: true });
+  writeFileSync(path, JSON.stringify(output, null, 2), "utf8");
+}
+
 function conversationThreadsFromLlm(messages: ReturnType<typeof toNormalizedMessages>, llmThreads: Array<{ id: string; message_ids: string[]; topic_hint?: string; confidence: number }>): ConversationThread[] {
   const byId = new Map(messages.map((m) => [m.id, m]));
   return llmThreads.map((thread) => {
@@ -1181,16 +1188,21 @@ program
   .option("--smoke", "run smoke benchmark")
   .option("--core", "run core benchmark: decision extraction + conflict update + recall")
   .option("--suite <suite>", "run a specific suite: decision-extraction | conflict-update | recall | anti-interference | remind | feishu-workflow | llm-decision-extraction | thread-linking")
+  .option("--save <path>", "保存评测结果 JSON，默认 runs/latest-eval.json", "runs/latest-eval.json")
   .description("Run benchmarks")
   .action(async (opts) => {
     if (opts.smoke) {
       const cases = loadSmokeCases();
-      console.log(JSON.stringify({ ok: true, command: "eval", smoke: true, ...summarizeSmokeCases(cases) }, null, 2));
+      const output = { ok: true, command: "eval", mode: "smoke", at: new Date().toISOString(), smoke: true, ...summarizeSmokeCases(cases) };
+      saveEvalOutput(opts.save, output);
+      console.log(JSON.stringify(output, null, 2));
       return;
     }
     if (opts.core) {
       const results = runAllCoreEvals();
-      console.log(JSON.stringify({ ok: true, command: "eval", core: true, results }, null, 2));
+      const output = { ok: true, command: "eval", mode: "core", at: new Date().toISOString(), core: true, results };
+      saveEvalOutput(opts.save, output);
+      console.log(JSON.stringify(output, null, 2));
       return;
     }
     if (opts.suite) {
@@ -1212,10 +1224,14 @@ program
                       ? await runThreadLinkingEval()
                       : undefined;
       if (!result) throw new Error(`未知 suite: ${opts.suite}`);
-      console.log(JSON.stringify({ ok: true, command: "eval", result }, null, 2));
+      const output = { ok: true, command: "eval", mode: opts.suite, at: new Date().toISOString(), result };
+      saveEvalOutput(opts.save, output);
+      console.log(JSON.stringify(output, null, 2));
       return;
     }
-    console.log(JSON.stringify({ ok: true, command: "eval", smoke: false, cases: 0 }, null, 2));
+    const output = { ok: true, command: "eval", mode: "empty", at: new Date().toISOString(), smoke: false, cases: 0 };
+    saveEvalOutput(opts.save, output);
+    console.log(JSON.stringify(output, null, 2));
   });
 
 program
@@ -1228,6 +1244,7 @@ program
   .option("--refine-queue <path>", "Refine queue JSONL 路径", "data/refine_queue.jsonl")
   .option("--activation-throttle <path>", "Activation throttle JSONL 路径", "data/activation_throttle.jsonl")
   .option("--hook-log <path>", "OpenClaw hook log 路径", "runs/kairos-feishu-ingress.jsonl")
+  .option("--eval-result <path>", "本地评测结果 JSON 路径", "runs/latest-eval.json")
   .option("--db <path>", "SQLite/JSONL 数据路径")
   .option("--store <kind>", "存储后端 jsonl/sqlite，默认 jsonl")
   .description("生成/启动 Kairos 引擎工作可视化页面；只读，不污染飞书群")
@@ -1240,6 +1257,7 @@ program
       refineQueuePath: opts.refineQueue,
       activationThrottlePath: opts.activationThrottle,
       hookLogPath: opts.hookLog,
+      evalResultPath: opts.evalResult,
     };
     if (opts.serve) {
       const server = await serveEngineDashboard({ ...options, port: Number(opts.port), refreshSeconds: 2 });

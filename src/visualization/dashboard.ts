@@ -15,6 +15,7 @@ export type EngineDashboardOptions = {
   refineQueuePath?: string;
   activationThrottlePath?: string;
   hookLogPath?: string;
+  evalResultPath?: string;
 };
 
 export type EngineDashboardData = {
@@ -25,6 +26,7 @@ export type EngineDashboardData = {
   refine_jobs: unknown[];
   activations: unknown[];
   hook_logs: unknown[];
+  eval_results: unknown[];
 };
 
 export function buildEngineDashboardData(options: EngineDashboardOptions): EngineDashboardData {
@@ -33,6 +35,7 @@ export function buildEngineDashboardData(options: EngineDashboardOptions): Engin
   const refineQueuePath = options.refineQueuePath ?? "data/refine_queue.jsonl";
   const activationThrottlePath = options.activationThrottlePath ?? "data/activation_throttle.jsonl";
   const hookLogPath = options.hookLogPath ?? "runs/kairos-feishu-ingress.jsonl";
+  const evalResultPath = options.evalResultPath ?? "runs/latest-eval.json";
   const throttle = new ActivationThrottle(activationThrottlePath);
   return {
     generated_at: new Date().toISOString(),
@@ -42,6 +45,7 @@ export function buildEngineDashboardData(options: EngineDashboardOptions): Engin
     refine_jobs: new RefineQueue(refineQueuePath).list({ limit: 100 }),
     activations: [...throttle.latest().values()],
     hook_logs: readJsonlSafe(hookLogPath).slice(-100),
+    eval_results: readEvalResults(evalResultPath).slice(-20),
   };
 }
 
@@ -54,6 +58,7 @@ export function writeEngineDashboardHtml(data: EngineDashboardData, outputPath: 
 export function renderEngineDashboardHtml(data: EngineDashboardData, options: { refreshSeconds?: number } = {}): string {
   const latestHook = data.hook_logs.slice(-8).reverse();
   const latestEvents = data.events.slice(-8).reverse();
+  const latestEval = data.eval_results.slice(-3).reverse();
   const induction = data.induction_jobs as any[];
   const refine = data.refine_jobs as any[];
   const activeMemories = data.memories.filter((m) => m.status === "active").slice(0, 12);
@@ -142,6 +147,11 @@ export function renderEngineDashboardHtml(data: EngineDashboardData, options: { 
       <h2>Recent Memory Events</h2>
       ${logTable(latestEvents)}
     </section>
+
+    <section class="card span12">
+      <h2>Benchmark / Local Eval Results</h2>
+      ${evalTable(latestEval)}
+    </section>
   </main>
 </body>
 </html>`;
@@ -179,6 +189,30 @@ function queueTable(title: string, jobs: any[]): string {
 function logTable(items: unknown[]): string {
   if (!items.length) return `<div class="muted">暂无日志</div>`;
   return `<table><tbody>${items.map((item) => `<tr><td><pre>${escapeHtml(short(JSON.stringify(item, null, 2), 520))}</pre></td></tr>`).join("")}</tbody></table>`;
+}
+
+function evalTable(items: any[]): string {
+  if (!items.length) return `<div class="muted">暂无本地评测结果。运行 <span class="mono">memoryops eval --core</span> 后会自动出现在这里。</div>`;
+  return `<table><thead><tr><th>Time</th><th>Mode</th><th>Suites</th><th>Passed</th><th>Details</th></tr></thead><tbody>${items.map((item) => {
+    const result = item.result ?? item.results ?? item;
+    const suites = Array.isArray(result) ? result : [result];
+    const total = suites.reduce((sum: number, s: any) => sum + Number(s.total ?? 0), 0);
+    const passed = suites.reduce((sum: number, s: any) => sum + Number(s.passed ?? 0), 0);
+    const failed = suites.reduce((sum: number, s: any) => sum + Number(s.failed ?? 0), 0);
+    return `<tr><td class="mono">${escapeHtml(item.at ?? item.generated_at ?? "")}</td><td>${escapeHtml(item.mode ?? item.command ?? "eval")}</td><td>${escapeHtml(suites.map((s: any) => s.suite).filter(Boolean).join(", "))}</td><td class="${failed ? "bad" : "ok"}">${passed}/${total}</td><td><pre>${escapeHtml(short(JSON.stringify(result, null, 2), 500))}</pre></td></tr>`;
+  }).join("")}</tbody></table>`;
+}
+
+function readEvalResults(path: string): unknown[] {
+  if (!existsSync(path)) return [];
+  const text = readFileSync(path, "utf8").trim();
+  if (!text) return [];
+  try {
+    const parsed = JSON.parse(text);
+    return Array.isArray(parsed) ? parsed : [parsed];
+  } catch {
+    return readJsonlSafe(path);
+  }
 }
 
 function readJsonlSafe(path: string): unknown[] {
