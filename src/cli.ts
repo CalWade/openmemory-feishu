@@ -21,6 +21,7 @@ import { formatRecallAnswer } from "./memory/recallFormatter.js";
 import { redactWebhookUrl, sendFeishuInteractiveWebhook } from "./feishuWebhook.js";
 import { loadEnvValue } from "./llm/config.js";
 import { runFeishuWorkflow } from "./workflow/feishuWorkflow.js";
+import { ActivationThrottle } from "./workflow/activationThrottle.js";
 import { buildLarkCliPlan, checkLarkCliStatus, extractTextsFromLarkCliJson, preflightLarkCliPurpose, runLarkCliJson, runLarkCliText, toNormalizedMessages } from "./larkCliAdapter.js";
 import { threadMessages } from "./candidate/thread.js";
 import { buildCandidateWindowFromThread } from "./candidate/window.js";
@@ -365,6 +366,8 @@ larkCli
   .option("--min-score <score>", "activation 最低匹配分", "2")
   .option("--send-feishu-webhook", "当建议推送卡片时，通过飞书机器人 webhook 发送")
   .option("--feishu-webhook <url>", "飞书机器人 webhook；也可用 KAIROS_FEISHU_WEBHOOK_URL")
+  .option("--activation-throttle <path>", "activation throttle JSONL 路径", "data/activation_throttle.jsonl")
+  .option("--cooldown-ms <ms>", "同群同 memory 推卡冷却时间(ms)", "900000")
   .option("--db <path>", "SQLite/JSONL 数据路径")
   .option("--events <path>", "JSONL event log 路径")
   .option("--store <kind>", "存储后端 jsonl/sqlite，默认 jsonl")
@@ -378,6 +381,7 @@ larkCli
     const raw = runLarkCliJson(args);
     const messages = toNormalizedMessages(raw, opts.chatId);
     const store = await storeFromOptions(opts);
+    const throttle = new ActivationThrottle(opts.activationThrottle);
     const webhookUrl = opts.sendFeishuWebhook ? (opts.feishuWebhook ?? loadEnvValue("KAIROS_FEISHU_WEBHOOK_URL")) : undefined;
     if (opts.sendFeishuWebhook && !webhookUrl) throw new Error("缺少飞书 webhook：请传 --feishu-webhook 或设置 KAIROS_FEISHU_WEBHOOK_URL");
 
@@ -389,14 +393,28 @@ larkCli
         minScore: Number(opts.minScore),
       });
       let sent;
-      if (webhookUrl && activation.action === "push_decision_card" && activation.card) {
-        sent = await sendFeishuInteractiveWebhook(webhookUrl, activation.card);
+      let throttleDecision;
+      let throttleRecord;
+      if (activation.action === "push_decision_card" && activation.card && activation.memory_id) {
+        throttleDecision = throttle.check({
+          chat_id: opts.chatId,
+          memory_id: activation.memory_id,
+          cooldownMs: Number(opts.cooldownMs),
+        });
+        if (webhookUrl && throttleDecision.allowed) {
+          sent = await sendFeishuInteractiveWebhook(webhookUrl, activation.card);
+          if (sent.ok) {
+            throttleRecord = throttle.record({ chat_id: opts.chatId, memory_id: activation.memory_id, message_id: message.id });
+          }
+        }
       }
       results.push({
         message_id: message.id,
         sender: message.sender,
         text: message.text,
         activation,
+        throttle: throttleDecision,
+        throttle_record: throttleRecord,
         sent,
       });
     }

@@ -27,13 +27,14 @@ const handler = async (event) => {
 
   try {
     ensureBuilt(repoDir);
-    const [{ createMemoryStore }, { runFeishuWorkflow }, { sendFeishuInteractiveWebhook, redactWebhookUrl }, { loadEnvValue }] = await Promise.all([
+    const [{ createMemoryStore }, { runFeishuWorkflow }, { ActivationThrottle }, { sendFeishuInteractiveWebhook, redactWebhookUrl }, { loadEnvValue }] = await Promise.all([
       importFromRepo(repoDir, "dist/memory/storeFactory.js"),
       importFromRepo(repoDir, "dist/workflow/feishuWorkflow.js"),
+      importFromRepo(repoDir, "dist/workflow/activationThrottle.js"),
       importFromRepo(repoDir, "dist/feishuWebhook.js"),
       importFromRepo(repoDir, "dist/llm/config.js"),
     ]);
-    const store = createMemoryStore({
+    const store = await createMemoryStore({
       store: process.env.KAIROS_STORE ?? "jsonl",
       db: resolve(repoDir, "data/memory.jsonl"),
       events: resolve(repoDir, "data/memory_events.jsonl"),
@@ -41,11 +42,23 @@ const handler = async (event) => {
     const output = runFeishuWorkflow(store, { text, project: process.env.KAIROS_PROJECT ?? "kairos" });
     let sent;
     let webhook;
-    if (process.env.KAIROS_HOOK_SEND_FEISHU === "1" && output.action === "push_decision_card" && output.card) {
-      const webhookUrl = process.env.KAIROS_FEISHU_WEBHOOK_URL ?? loadEnvValue("KAIROS_FEISHU_WEBHOOK_URL", resolve(repoDir, ".env"));
-      if (!webhookUrl) throw new Error("KAIROS_HOOK_SEND_FEISHU=1 but KAIROS_FEISHU_WEBHOOK_URL is missing");
-      sent = await sendFeishuInteractiveWebhook(webhookUrl, output.card);
-      webhook = redactWebhookUrl(webhookUrl);
+    let throttleDecision;
+    let throttleRecord;
+    const chatId = String(context.chatId ?? context.chat_id ?? context.metadata?.chat_id ?? context.metadata?.chatId ?? "unknown-chat");
+    if (output.action === "push_decision_card" && output.card && output.memory_id) {
+      const throttle = new ActivationThrottle(resolve(repoDir, "data/activation_throttle.jsonl"));
+      throttleDecision = throttle.check({
+        chat_id: chatId,
+        memory_id: output.memory_id,
+        cooldownMs: Number(process.env.KAIROS_ACTIVATION_COOLDOWN_MS ?? 15 * 60 * 1000),
+      });
+      if (process.env.KAIROS_HOOK_SEND_FEISHU === "1" && throttleDecision.allowed) {
+        const webhookUrl = process.env.KAIROS_FEISHU_WEBHOOK_URL ?? loadEnvValue("KAIROS_FEISHU_WEBHOOK_URL", resolve(repoDir, ".env"));
+        if (!webhookUrl) throw new Error("KAIROS_HOOK_SEND_FEISHU=1 but KAIROS_FEISHU_WEBHOOK_URL is missing");
+        sent = await sendFeishuInteractiveWebhook(webhookUrl, output.card);
+        webhook = redactWebhookUrl(webhookUrl);
+        if (sent.ok) throttleRecord = throttle.record({ chat_id: chatId, memory_id: output.memory_id, message_id: context.messageId ?? context.message_id });
+      }
     }
     log(repoDir, {
       at: new Date().toISOString(),
@@ -54,6 +67,8 @@ const handler = async (event) => {
       output,
       sent,
       webhook,
+      throttle: throttleDecision,
+      throttle_record: throttleRecord,
     });
   } catch (error) {
     log(repoDir, {
@@ -80,6 +95,7 @@ function ensureBuilt(repoDir) {
     "dist/memory/storeFactory.js",
     "dist/memory/jsonlStore.js",
     "dist/workflow/feishuWorkflow.js",
+    "dist/workflow/activationThrottle.js",
     "dist/feishuWebhook.js",
     "dist/llm/config.js",
   ];
