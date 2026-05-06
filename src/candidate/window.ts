@@ -1,6 +1,7 @@
 import type { NormalizedMessage } from "./types.js";
 import type { ConversationThread } from "./thread.js";
 import type { ScoredSegment } from "./salience.js";
+import type { SourceChannel, SourceType } from "../memory/atom.js";
 
 /**
  * 新版候选记忆窗口：围绕一个潜在决策/风险/约定的完整上下文。
@@ -239,6 +240,8 @@ export type LegacyCandidateWindow = {
   evidence_message_ids: string[];
   dropped_message_ids: string[];
   estimated_tokens: number;
+  source_channel?: SourceChannel;
+  source_type?: SourceType;
 };
 
 export type LegacyWindowOptions = {

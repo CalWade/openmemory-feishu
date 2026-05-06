@@ -42,4 +42,16 @@ describe("extractionToMemoryAtom", () => {
       rmSync(dir, { recursive: true, force: true });
     }
   });
+
+  it("保留非 manual 来源归因", () => {
+    const window = {
+      ...win("张三：最终决定 MVP 阶段使用 SQLite 作为当前状态库。"),
+      source_channel: "feishu",
+      source_type: "feishu_message",
+    } satisfies CandidateWindow;
+    const result = extractDecisionBaseline(window);
+    const atom = extractionToMemoryAtom(result, window, "kairos");
+    expect(atom?.source.channel).toBe("feishu");
+    expect(atom?.source.source_type).toBe("feishu_message");
+  });
 });

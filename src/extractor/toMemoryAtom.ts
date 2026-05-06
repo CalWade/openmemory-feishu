@@ -26,8 +26,8 @@ export function extractionToMemoryAtom(result: ExtractionResult, window: Candida
       review_at,
     }),
     source: {
-      channel: "manual",
-      source_type: "manual_text",
+      channel: window.source_channel ?? "manual",
+      source_type: window.source_type ?? "manual_text",
       excerpt: window.denoised_text,
       chunk_ids: result.evidence_message_ids,
     },

@@ -275,6 +275,8 @@ larkCli
         evidence_message_ids: win.evidence_message_ids,
         dropped_message_ids: win.dropped_message_ids,
         estimated_tokens: win.estimated_tokens,
+        source_channel: "feishu",
+        source_type: "feishu_message",
       });
       const atom = extractionToMemoryAtom(extraction, {
         id: win.id,
@@ -287,6 +289,8 @@ larkCli
         evidence_message_ids: win.evidence_message_ids,
         dropped_message_ids: win.dropped_message_ids,
         estimated_tokens: win.estimated_tokens,
+        source_channel: "feishu",
+        source_type: "feishu_message",
       }, opts.project);
       const saved = opts.write && atom ? store!.upsert(atom) : undefined;
       results.push({ window: win.id, thread_id: win.thread_id, salience: win.salience_score, extraction, atom, saved });
