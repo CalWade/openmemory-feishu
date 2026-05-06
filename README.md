@@ -1,27 +1,88 @@
 # Kairos
 
-> 面向飞书协作场景的长期项目记忆引擎。Kairos 通过官方 `lark-cli` 接入飞书群消息，自动沉淀项目决策、风险和团队约定，并在后续讨论触及历史上下文时主动推送决策卡片。
+> 面向飞书协作场景的长期项目记忆引擎。Kairos 读取飞书群聊中的真实协作消息，自动沉淀项目决策、风险和团队约定，并在后续讨论触及历史上下文时主动推送决策卡片。
 
-## 运行方式
+## 一句话说明
+
+Kairos 解决的是团队协作中的“群聊失忆”问题：
+
+```text
+过去已经讨论清楚的决策，几天后又被重新争论；
+关键理由散落在群聊里，没人能快速找到；
+新旧规则混在一起，容易把过期信息当成当前事实。
+```
+
+Kairos 把这些群聊信息转化为有状态、有证据链、可更新的长期记忆。
+
+## 当前工作流
 
 ```text
 飞书群聊
-  ↓ lark-cli Runtime
-Kairos Memory Engine
+  ↓ 官方 lark-cli 读取消息
+Kairos lark-cli Runtime
   ↓
-Dashboard 可视化 + 飞书决策卡片
+会话解缠 / LLM 慢速归纳
+  ↓
+MemoryAtom 长期记忆
+  ↓
+历史决策激活
+  ↓
+飞书决策卡片 + Dashboard 可视化
 ```
 
-Kairos 使用官方 `lark-cli` 接入飞书群消息，使用飞书群自定义机器人 webhook 推送决策卡片。OpenClaw 作为 Agent 宿主、部署和运维控制面。
+## 典型演示场景
 
-## 两种使用方式
+团队先在飞书群里做出决策：
 
-| 方式 | 入口 |
+```text
+最终决定：复赛阶段先用 SQLite，PostgreSQL 复赛后再评估。
+```
+
+几天后有人重新提出：
+
+```text
+要不我们还是用 PostgreSQL？
+```
+
+Kairos 会自动召回此前决策，推送飞书决策卡片：
+
+```text
+历史决策：复赛阶段先使用 SQLite
+当时理由：PostgreSQL 部署成本较高，可能影响评委快速运行
+证据：来自此前群聊讨论
+操作：确认有效 / 忽略 / 请求更新
+```
+
+## 核心能力
+
+| 能力 | 说明 |
 |---|---|
-| 本地运行 | [`QUICKSTART.md`](./QUICKSTART.md) |
-| 基于 OpenClaw 运行 | [`USAGE.md`](./USAGE.md) 中的一键复制提示词 |
+| 飞书群消息接入 | 使用官方 lark-cli 读取目标群消息 |
+| 后台运行时 | `lark-runtime` 轮询新消息、去重、归纳、激活 |
+| 会话理解 | 显式 thread/reply + LLM thread linking 处理交错群聊 |
+| 慢速归纳 | induction queue 后台形成长期记忆，不打断群聊 |
+| 结构化记忆 | MemoryAtom 保存决策、风险、约定、证据链和状态 |
+| 冲突更新 | 支持 DUPLICATE / SUPERSEDE / CONFLICT_PENDING |
+| 主动激活 | 后续消息触及历史决策时推送飞书卡片 |
+| 反馈修正 | 支持确认、忽略、请求更新和 refine queue |
+| 可视化 | Dashboard 以中文数据流展示引擎工作过程 |
+| 自证评测 | 内置抗干扰、矛盾更新、召回、线程链接等评测 |
 
-本地最短路径：
+## 快速接入
+
+本地运行或让 OpenClaw Agent 代为部署，都看同一个文档：
+
+```text
+QUICKSTART.md
+```
+
+如果你要让 OpenClaw Agent 操作，直接发：
+
+```text
+https://github.com/CalWade/Kairos；请按 QUICKSTART.md 的 lark-cli Runtime 模式接入飞书群。
+```
+
+## 最短命令
 
 ```bash
 npm install
@@ -31,73 +92,15 @@ npm run dashboard
 npm run lark-runtime
 ```
 
-## 解决的问题
-
-飞书群聊里沉淀了大量关键协作信息：
-
-- 为什么复赛阶段先用 SQLite，而不是 PostgreSQL？
-- 哪个流程已经被新规则覆盖？
-- 哪个风险已经提醒过？
-- 当前有效决策是什么，旧决策是否已经失效？
-
-Kairos 把这些碎片化信息变成结构化、可追溯、可更新的长期记忆。
-
-## 核心能力
-
-| 能力 | 说明 |
-|---|---|
-| 飞书群接入 | `lark-cli Runtime` 轮询目标群消息，按 `message_id` 去重 |
-| 会话理解 | 显式 thread/reply + LLM thread linking，用于复杂群聊上下文归纳 |
-| 慢速归纳 | `InductionQueue` 后台处理候选窗口，不阻塞群聊流程 |
-| 结构化记忆 | `MemoryAtom` 保存决策、风险、约定、证据链和状态 |
-| 冲突更新 | `Reconcile` 支持 DUPLICATE / SUPERSEDE / CONFLICT_PENDING |
-| 历史激活 | 新消息触及旧决策时，自动推送飞书决策卡片 |
-| 反馈修正 | 卡片支持确认、忽略、请求更新；更新请求进入 `RefineQueue` |
-| 可视化 | `Dashboard` 以中文数据流形式展示引擎真实工作状态 |
-| 自证评测 | 内置抗干扰、矛盾更新、召回、线程链接等评测套件 |
-
-## 运行入口
-
-### 接入飞书群
-
-```bash
-npm run setup:lark-runtime -- --profile kairos-alt --chat-id oc_xxx --feishu-webhook "https://open.feishu.cn/open-apis/bot/v2/hook/xxx" --test-read --test-webhook
-```
-
-### 启动可视化页面
-
-```bash
-npm run dashboard
-```
-
-打开：
+Dashboard 默认地址：
 
 ```text
 http://127.0.0.1:8787
 ```
 
-### 启动飞书群监听
-
-```bash
-npm run lark-runtime
-```
-
-### 只跑一轮调试
-
-```bash
-npm run lark-runtime:once
-```
-
-### 跑本地评测
-
-```bash
-npm run eval:core
-npm run dev -- eval --suite thread-linking
-```
-
 ## Dashboard 展示
 
-Dashboard 是旁路观察页面，不向群聊发送调试消息。它展示：
+Dashboard 是旁路观察页面，不向群聊发送调试消息。它展示 Kairos 的真实数据流：
 
 ```text
 飞书消息进入
@@ -105,9 +108,10 @@ Dashboard 是旁路观察页面，不向群聊发送调试消息。它展示：
 → 长期记忆生成
 → 历史记忆激活
 → 反馈与修正
+→ 本地评测结果
 ```
 
-适合比赛录屏时与飞书群界面并排展示。
+比赛录屏建议：左侧飞书群，右侧 Dashboard。
 
 ## 项目结构
 
@@ -126,31 +130,24 @@ src/eval/              Benchmark runner
 ## 评测
 
 ```bash
-npm run dev -- eval --core
+npm run eval:core
 npm run dev -- eval --suite thread-linking
 npm run dev -- eval --suite llm-decision-extraction
 ```
 
-核心评测覆盖：
+评测结果会保存到：
 
-- 决策/风险/约定抽取；
-- 抗干扰召回；
-- 矛盾更新；
-- 飞书工作流 activation；
-- LLM thread linking 对比；
-- 本地评测结果会自动展示在 Dashboard。
+```text
+runs/latest-eval.json
+```
 
-## 公开文档
+并自动显示在 Dashboard。
+
+## 主要文档
 
 | 文档 | 说明 |
 |---|---|
-| [`QUICKSTART.md`](./QUICKSTART.md) | 本地接入飞书群的最短路径 |
-| [`USAGE.md`](./USAGE.md) | 本地运行 / OpenClaw 运行两种方式和可复制提示词 |
-| [`docs/lark-cli-runbook.md`](./docs/lark-cli-runbook.md) | lark-cli Runtime 详细排障和授权说明 |
-| [`docs/demo-script.md`](./docs/demo-script.md) | 比赛展示脚本 |
+| [`QUICKSTART.md`](./QUICKSTART.md) | 接入飞书群的唯一快速入口 |
+| [`docs/lark-cli-runbook.md`](./docs/lark-cli-runbook.md) | lark-cli 授权、群接入和排障 |
+| [`docs/demo-script.md`](./docs/demo-script.md) | 复赛演示脚本 |
 | [`docs/benchmark-report.md`](./docs/benchmark-report.md) | 自证评测报告 |
-| [`docs/archive/`](./docs/archive/) | 归档文档 |
-
-## 当前定位
-
-Kairos 可以独立于 OpenClaw 运行；在比赛展示中，OpenClaw 体现为 Agent 宿主和运维控制面：负责拉取仓库、配置 lark-cli、启动 Runtime、启动 Dashboard、运行评测和排障。飞书消息接入使用官方 lark-cli，保证链路真实、稳定、可复现。

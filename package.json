@@ -50,7 +50,6 @@
       "OPENCLAW.md",
       "INSTALL.md",
       "QUICKSTART.md",
-      "USAGE.md",
       "docs/lark-cli-runbook.md",
       "docs/demo-script.md",
       "docs/benchmark-report.md"
@@ -60,7 +59,6 @@
     "dist",
     "README.md",
     "QUICKSTART.md",
-    "USAGE.md",
     "LICENSE",
     "package.json",
     "INSTALL.md",

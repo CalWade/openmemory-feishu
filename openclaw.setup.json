@@ -55,7 +55,6 @@
   "docs": [
     "README.md",
     "QUICKSTART.md",
-    "USAGE.md",
     "INSTALL.md",
     "OPENCLAW.md",
     "docs/lark-cli-runbook.md",
