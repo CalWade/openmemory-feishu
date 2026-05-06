@@ -29,11 +29,12 @@ const handler = async (event) => {
 
   try {
     ensureBuilt(repoDir);
-    const [{ createMemoryStore }, { runFeishuWorkflow }, { ActivationThrottle }, { applyDecisionCardFeedback }, { sendFeishuInteractiveWebhook, redactWebhookUrl }, { loadEnvValue }] = await Promise.all([
+    const [{ createMemoryStore }, { runFeishuWorkflow }, { ActivationThrottle }, { applyDecisionCardFeedback }, { RefineQueue }, { sendFeishuInteractiveWebhook, redactWebhookUrl }, { loadEnvValue }] = await Promise.all([
       importFromRepo(repoDir, "dist/memory/storeFactory.js"),
       importFromRepo(repoDir, "dist/workflow/feishuWorkflow.js"),
       importFromRepo(repoDir, "dist/workflow/activationThrottle.js"),
       importFromRepo(repoDir, "dist/memory/cardFeedback.js"),
+      importFromRepo(repoDir, "dist/refine/queue.js"),
       importFromRepo(repoDir, "dist/feishuWebhook.js"),
       importFromRepo(repoDir, "dist/llm/config.js"),
     ]);
@@ -43,7 +44,7 @@ const handler = async (event) => {
       events: resolve(repoDir, "data/memory_events.jsonl"),
     });
     if (feedback) {
-      const result = applyDecisionCardFeedback(store, feedback);
+      const result = applyDecisionCardFeedback(store, feedback, { refineQueue: new RefineQueue(resolve(repoDir, "data/refine_queue.jsonl")) });
       log(repoDir, {
         at: new Date().toISOString(),
         sessionKey: event.sessionKey,
@@ -127,6 +128,7 @@ function ensureBuilt(repoDir) {
     "dist/workflow/feishuWorkflow.js",
     "dist/workflow/activationThrottle.js",
     "dist/memory/cardFeedback.js",
+    "dist/refine/queue.js",
     "dist/feishuWebhook.js",
     "dist/llm/config.js",
   ];

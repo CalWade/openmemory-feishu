@@ -18,6 +18,7 @@ import { buildDecisionCard, renderDecisionCardFeishuPayload, renderDecisionCardM
 import { applyDecisionCardFeedback } from "./memory/cardFeedback.js";
 import { reconcileAndApplyMemoryAtom } from "./memory/reconcile.js";
 import { InductionQueue } from "./induction/queue.js";
+import { RefineQueue } from "./refine/queue.js";
 import { formatRecallAnswer } from "./memory/recallFormatter.js";
 import { redactWebhookUrl, sendFeishuInteractiveWebhook } from "./feishuWebhook.js";
 import { loadEnvValue } from "./llm/config.js";
@@ -784,6 +785,8 @@ program
   .option("--user-id <userId>", "反馈用户 ID")
   .option("--message-id <messageId>", "触发反馈的消息/卡片消息 ID")
   .option("--note <note>", "补充说明")
+  .option("--refine-queue <path>", "refine queue JSONL 路径", "data/refine_queue.jsonl")
+  .option("--no-enqueue-refine", "update_requested 时不加入 refine queue")
   .option("--now <time>", "mock current time, ISO 8601")
   .option("--db <path>", "SQLite/JSONL 数据路径")
   .option("--events <path>", "JSONL event log 路径")
@@ -800,6 +803,8 @@ program
       message_id: opts.messageId,
       note: opts.note,
       now: opts.now,
+    }, {
+      refineQueue: opts.enqueueRefine === false ? undefined : new RefineQueue(opts.refineQueue),
     });
     console.log(JSON.stringify({ ok: result.ok, command: "card-feedback", result }, null, 2));
   });
@@ -903,6 +908,40 @@ remind
   .action(async (atomId, opts) => {
     const atom = (await storeFromOptions(opts)).snoozeReminder(atomId, opts.until, { now: opts.now });
     console.log(JSON.stringify({ ok: true, command: "remind snooze", atom }, null, 2));
+  });
+
+const refine = program
+  .command("refine")
+  .description("管理 update_requested 产生的记忆修正队列");
+
+refine
+  .command("list", { isDefault: true })
+  .option("--queue <path>", "refine queue JSONL 路径", "data/refine_queue.jsonl")
+  .option("--status <status>", "pending/done/failed")
+  .option("--limit <limit>", "返回数量", "20")
+  .description("列出 refine job")
+  .action((opts) => {
+    const queue = new RefineQueue(opts.queue);
+    const jobs = queue.list({ status: opts.status, limit: Number(opts.limit) });
+    console.log(JSON.stringify({ ok: true, command: "refine list", total: jobs.length, jobs }, null, 2));
+  });
+
+refine
+  .command("done")
+  .argument("<jobId>")
+  .option("--queue <path>", "refine queue JSONL 路径", "data/refine_queue.jsonl")
+  .option("--result <json>", "处理结果 JSON 字符串", "{}")
+  .description("标记 refine job 已人工/外部处理")
+  .action((jobId, opts) => {
+    const queue = new RefineQueue(opts.queue);
+    const job = queue.get(jobId);
+    if (!job) {
+      console.log(JSON.stringify({ ok: false, command: "refine done", error: `job 不存在：${jobId}` }, null, 2));
+      process.exitCode = 1;
+      return;
+    }
+    const result = queue.markDone(job, JSON.parse(opts.result));
+    console.log(JSON.stringify({ ok: true, command: "refine done", job: result }, null, 2));
   });
 
 const induction = program

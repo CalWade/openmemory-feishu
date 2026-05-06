@@ -1,3 +1,4 @@
+import type { RefineQueue, RefineJob } from "../refine/queue.js";
 import type { MemoryAtom } from "./atom.js";
 import type { MemoryStoreLike } from "./storeFactory.js";
 
@@ -17,10 +18,11 @@ export type DecisionCardFeedbackResult = {
   action: DecisionCardFeedbackAction;
   memory_id: string;
   atom?: MemoryAtom;
+  refine_job?: RefineJob;
   error?: string;
 };
 
-export function applyDecisionCardFeedback(store: MemoryStoreLike, input: DecisionCardFeedbackInput): DecisionCardFeedbackResult {
+export function applyDecisionCardFeedback(store: MemoryStoreLike, input: DecisionCardFeedbackInput, options: { refineQueue?: RefineQueue } = {}): DecisionCardFeedbackResult {
   const atom = store.get(input.memory_id);
   if (!atom) {
     return { ok: false, action: input.action, memory_id: input.memory_id, error: "memory_not_found" };
@@ -50,7 +52,17 @@ export function applyDecisionCardFeedback(store: MemoryStoreLike, input: Decisio
   };
 
   const saved = store.upsert(updated);
-  return { ok: true, action: input.action, memory_id: input.memory_id, atom: saved };
+  const refine_job = input.action === "update_requested" && options.refineQueue
+    ? options.refineQueue.enqueue({
+      memory_id: input.memory_id,
+      project: saved.project,
+      requested_by: input.user_id,
+      message_id: input.message_id,
+      note: input.note,
+      now,
+    })
+    : undefined;
+  return { ok: true, action: input.action, memory_id: input.memory_id, atom: saved, refine_job };
 }
 
 function feedbackState(action: DecisionCardFeedbackAction): string {

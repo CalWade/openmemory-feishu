@@ -13,6 +13,7 @@ describe("kairos-feishu-ingress hook", () => {
     expect(handler).toContain("KAIROS_HOOK_SEND_FEISHU");
     expect(handler).toContain("ActivationThrottle");
     expect(handler).toContain("applyDecisionCardFeedback");
+    expect(handler).toContain("RefineQueue");
     expect(handler).toContain("card_feedback");
     expect(handler).toContain("runs/kairos-feishu-ingress.jsonl");
   });
