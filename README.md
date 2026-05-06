@@ -14,7 +14,14 @@ Dashboard 可视化 + 飞书决策卡片
 
 Kairos 使用官方 `lark-cli` 接入飞书群消息，使用飞书群自定义机器人 webhook 推送决策卡片。OpenClaw 作为 Agent 宿主、部署和运维控制面。
 
-快速接入：[`QUICKSTART.md`](./QUICKSTART.md)
+## 两种使用方式
+
+| 方式 | 入口 |
+|---|---|
+| 本地运行 | [`QUICKSTART.md`](./QUICKSTART.md) |
+| 基于 OpenClaw 运行 | [`USAGE.md`](./USAGE.md) 中的一键复制提示词 |
+
+本地最短路径：
 
 ```bash
 npm install
@@ -137,7 +144,8 @@ npm run dev -- eval --suite llm-decision-extraction
 
 | 文档 | 说明 |
 |---|---|
-| [`QUICKSTART.md`](./QUICKSTART.md) | 接入飞书群的最短路径 |
+| [`QUICKSTART.md`](./QUICKSTART.md) | 本地接入飞书群的最短路径 |
+| [`USAGE.md`](./USAGE.md) | 本地运行 / OpenClaw 运行两种方式和可复制提示词 |
 | [`docs/lark-cli-runbook.md`](./docs/lark-cli-runbook.md) | lark-cli Runtime 详细排障和授权说明 |
 | [`docs/demo-script.md`](./docs/demo-script.md) | 比赛展示脚本 |
 | [`docs/benchmark-report.md`](./docs/benchmark-report.md) | 自证评测报告 |
