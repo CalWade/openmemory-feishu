@@ -184,7 +184,7 @@ program
     checks.push({ name: "openclaw.setup.json", ok: existsSync("openclaw.setup.json"), next: "确认当前目录是 Kairos 仓库根目录" });
     const larkStatus = checkLarkCliStatus({ checkAuth: true, profile: opts.profile });
     checks.push({ name: "lark-cli installed", ok: larkStatus.installed, detail: larkStatus.version, next: "npm install -g @larksuite/cli" });
-    checks.push({ name: `lark-cli profile ${opts.profile}`, ok: !!larkStatus.auth_ok, detail: larkStatus.auth_ok ? "authorized" : larkStatus.auth_summary || larkStatus.error, next: `lark-cli config init --new --name ${opts.profile} && lark-cli auth login --recommend --profile ${opts.profile}` });
+    checks.push({ name: `lark-cli profile ${opts.profile}`, ok: !!larkStatus.auth_ok, detail: larkStatus.auth_ok ? "authorized" : larkStatus.auth_summary || larkStatus.error, next: `lark-cli auth login --recommend --profile ${opts.profile}  # 按官方引导保持进程等待，不要反复 config init --new` });
     const chatPreflight = preflightLarkCliPurpose("chat_messages", { profile: opts.profile });
     checks.push({ name: "chat_messages scope", ok: chatPreflight.missing_scopes.length === 0, detail: { required: chatPreflight.required_scopes, missing: chatPreflight.missing_scopes }, next: chatPreflight.recommended_command?.join(" ") });
     const searchPreflight = preflightLarkCliPurpose("message_search", { profile: opts.profile });
@@ -241,8 +241,7 @@ program
     steps.push({ id: "build", status: existsSync("dist/cli.js") ? "done" : "todo", command: "npm install && npm run build" });
     steps.push({ id: "install-openclaw-plugin", status: existsSync("hooks/kairos-feishu-ingress/handler.js") && existsSync("openclaw.setup.json") ? "done" : "todo", command: "openclaw plugins install . && openclaw gateway restart", note: "仓库已包含插件元数据；如目标 OpenClaw 未安装过仍需执行该命令" });
     steps.push({ id: "install-lark-cli", status: larkStatus.installed ? "done" : "todo", command: "npm install -g @larksuite/cli" });
-    steps.push({ id: "create-profile", status: larkStatus.auth_ok ? "done" : "todo", command: `lark-cli config init --new --name ${opts.profile}`, userAction: "打开命令打印的 open.feishu.cn 链接，用目标飞书账号完成应用配置" });
-    steps.push({ id: "authorize-profile", status: larkStatus.auth_ok ? "done" : "todo", command: `lark-cli auth login --recommend --profile ${opts.profile}`, userAction: "打开命令打印的 OAuth 链接，确认授权" });
+    steps.push({ id: "authorize-profile", status: larkStatus.auth_ok ? "done" : "todo", command: `lark-cli auth login --recommend --profile ${opts.profile}`, userAction: "按 lark-cli 官方引导打开链接完成授权；保持命令运行，不要反复 config init --new 创建新应用" });
     steps.push({ id: "preflight", status: chatPreflight.missing_scopes.length === 0 ? "done" : "todo", command: `memoryops doctor --profile ${opts.profile} --pretty`, note: chatPreflight.missing_scopes.length ? `缺少：${chatPreflight.missing_scopes.join(", ")}` : "chat_messages ready" });
     steps.push({ id: "get-chat-id", status: opts.chatId ? "done" : "todo", command: `lark-cli im +chat-search --query <群名关键词> --format json --profile ${opts.profile}`, userAction: "或让用户直接提供 oc_xxx chat_id" });
     steps.push({ id: "final-e2e", status: "todo", command: opts.chatId ? `memoryops doctor --profile ${opts.profile} --chat-id ${opts.chatId} --e2e --pretty` : `memoryops doctor --profile ${opts.profile} --chat-id <oc_xxx> --e2e --pretty` });
@@ -290,7 +289,7 @@ larkCli
     const preflight = preflightLarkCliPurpose("chat_messages", { profile });
     const checks = [] as Array<{ name: string; ok: boolean; detail?: unknown; next?: string }>;
     checks.push({ name: "lark-cli installed", ok: status.installed, detail: status.version, next: "npm install -g @larksuite/cli" });
-    checks.push({ name: "lark-cli profile authorized", ok: !!status.auth_ok, detail: status.auth_summary, next: `lark-cli auth login --recommend --profile ${profile}` });
+    checks.push({ name: "lark-cli profile authorized", ok: !!status.auth_ok, detail: status.auth_summary, next: `lark-cli auth login --recommend --profile ${profile}  # 按官方引导保持进程等待，不要反复 config init --new` });
     checks.push({ name: "chat_messages scope", ok: preflight.missing_scopes.length === 0, detail: { missing_scopes: preflight.missing_scopes }, next: preflight.recommended_command?.join(" ") });
     checks.push({ name: "KAIROS_CHAT_ID", ok: !!chatId, detail: chatId, next: `lark-cli im +chat-list --format json --profile ${profile}` });
     checks.push({ name: "KAIROS_FEISHU_WEBHOOK_URL", ok: !!webhook, detail: webhook ? redactWebhookUrl(webhook) : undefined, next: "在目标飞书群添加自定义机器人，复制 webhook" });
@@ -336,6 +335,7 @@ larkCli
       chat_id: chatId,
       webhook: webhook ? redactWebhookUrl(webhook) : undefined,
       checks,
+      official_lark_cli_auth_note: "授权请按 lark-cli 官方 auth login 页面完成；不要反复运行 config init --new；授权命令需要保持运行直到成功返回。",
       next: ok ? ["npm run dashboard", "npm run lark-runtime"] : checks.find((c) => !c.ok)?.next,
     }, null, 2));
   });

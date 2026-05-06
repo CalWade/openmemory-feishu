@@ -11,12 +11,19 @@ npm install
 npm run build
 ```
 
-## 2. 准备 lark-cli
+## 2. 准备 lark-cli（按官方引导）
 
 ```bash
 npm install -g @larksuite/cli
 lark-cli auth login --recommend --profile kairos-alt
 ```
+
+重要：
+
+- 按 lark-cli 官方页面提示完成授权；
+- `auth login` 命令需要保持运行，直到浏览器授权完成并返回成功；
+- 不要反复运行 `lark-cli config init --new`；那会创建多个 CLI 应用，容易把授权搞乱；
+- 如果授权失败，先检查当前 profile 状态，不要马上重新创建新应用。
 
 确认登录：
 
@@ -54,7 +61,7 @@ https://open.feishu.cn/open-apis/bot/v2/hook/xxxx
 
 注意：webhook 必须来自同一个目标群，否则 Kairos 会读 A 群、发到 B 群。
 
-## 5. 运行接入向导
+## 5. 运行接入向导（只检查和写配置，不创建新应用）
 
 ```bash
 npm run setup:lark-runtime -- \

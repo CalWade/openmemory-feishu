@@ -105,30 +105,17 @@ Agent 执行：
 lark-cli profile list
 ```
 
-如果 `kairos-alt` 已存在且 token valid，可跳到第 6 步。否则执行：
+如果 `kairos-alt` 已存在且 token valid，可跳到第 6 步。否则按 lark-cli 官方推荐流程执行授权：
 
 ```bash
-lark-cli config init --new --name kairos-alt
+lark-cli auth login --recommend --profile kairos-alt
 ```
 
-该命令会阻塞并打印类似链接：
+重要：
 
-```text
-https://open.feishu.cn/page/cli?user_code=XXXX-XXXX&...
-```
-
-Agent 要把链接发给用户，并说明：
-
-> 请用目标飞书账号打开链接，按页面提示完成应用配置；不要把密码、验证码、App Secret 发给我。完成后回复“好了”。
-
-Agent 等用户回复后，检查命令是否退出 code 0。若超时/被杀，执行：
-
-```bash
-lark-cli profile list
-```
-
-- 如果 `kairos-alt` 出现：继续第 5 步
-- 如果没出现：重新运行 `lark-cli config init --new --name kairos-alt`，生成新链接
+- 不要反复运行 `lark-cli config init --new`，否则会创建多个 CLI 应用，导致用户反复授权但本地 profile 不生效；
+- `auth login` 命令必须保持运行，直到用户在浏览器完成授权并返回成功；
+- 如果失败，先运行 `lark-cli auth status --profile kairos-alt` 检查状态，再决定是否重新执行 `auth login`。
 
 ## 5. 用户 OAuth 授权
 
@@ -169,7 +156,7 @@ lark-cli auth status --profile kairos-alt
 No user logged in
 ```
 
-则杀掉旧授权进程，重新执行 `lark-cli auth login --recommend --profile kairos-alt` 发新链接。
+先确认刚才的 `auth login` 命令是否被超时杀掉；如果被杀，重新执行 `lark-cli auth login --recommend --profile kairos-alt`，并保持该命令运行直到浏览器授权完成。不要重新 `config init --new`。
 
 ## 6. Kairos doctor 预检
 
