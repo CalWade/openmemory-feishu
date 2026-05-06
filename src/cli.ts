@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { Command } from "commander";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { dirname } from "node:path";
 import { MemoryAtomSchema } from "./memory/schema.js";
 import { createManualMemory } from "./memory/factory.js";
 import { createMemoryStore } from "./memory/storeFactory.js";
@@ -58,6 +59,54 @@ function refineWindowWithLlmThread(window: CandidateWindow, messages: ReturnType
     salience_signals: [...new Set([...window.salience_signals, "llm_thread_linked_context"])],
     dropped_message_ids: messages.filter((m) => !best.thread.message_ids.includes(m.id)).map((m) => m.id),
   };
+}
+
+function buildThreadLinkingSilverSample(input: {
+  id: string;
+  messages: ReturnType<typeof toNormalizedMessages>;
+  threads: Array<{ id: string; message_ids: string[]; topic_hint?: string; confidence?: number }>;
+  labelSource: string;
+}) {
+  const idMap = new Map(input.messages.map((m, i) => [m.id, `m${i + 1}`]));
+  const senderMap = new Map<string, string>();
+  const senderAlias = (sender: string) => {
+    if (!senderMap.has(sender)) senderMap.set(sender, `user_${senderMap.size + 1}`);
+    return senderMap.get(sender)!;
+  };
+  return {
+    id: input.id,
+    source: { platform: "feishu", redacted: true, label_source: input.labelSource },
+    messages: input.messages.map((m) => ({
+      id: idMap.get(m.id),
+      sender: senderAlias(m.sender),
+      timestamp: m.timestamp,
+      text: redactText(m.text),
+    })),
+    expected_threads: input.threads
+      .map((t) => t.message_ids.map((id) => idMap.get(id)).filter(Boolean))
+      .filter((ids) => ids.length > 0),
+    label_metadata: input.threads.map((t) => ({
+      id: t.id,
+      topic_hint: t.topic_hint,
+      confidence: t.confidence,
+      message_ids: t.message_ids.map((id) => idMap.get(id)).filter(Boolean),
+    })),
+  };
+}
+
+function redactText(text: string): string {
+  return text
+    .replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi, "<EMAIL>")
+    .replace(/https?:\/\/[^\s]+/g, "<URL>")
+    .replace(/\b(?:\d{3,4}[- ]?)?\d{7,11}\b/g, "<PHONE>")
+    .replace(/(api[_-]?key|token|secret|password|AKIA)[=:：]?\s*[^\s，。]+/gi, "$1=<REDACTED>");
+}
+
+function writeJsonl(path: string, items: unknown[], append: boolean) {
+  const dir = dirname(path);
+  if (dir && dir !== "." && !existsSync(dir)) mkdirSync(dir, { recursive: true });
+  const body = items.map((item) => JSON.stringify(item)).join("\n") + "\n";
+  writeFileSync(path, body, { encoding: "utf8", flag: append ? "a" : "w" });
 }
 
 function conversationThreadsFromLlm(messages: ReturnType<typeof toNormalizedMessages>, llmThreads: Array<{ id: string; message_ids: string[]; topic_hint?: string; confidence: number }>): ConversationThread[] {
@@ -398,6 +447,47 @@ larkCli
       saved_total: results.filter((r) => r.saved).length,
       results,
     }, null, 2));
+  });
+
+larkCli
+  .command("generate-thread-silver-set")
+  .requiredOption("--chat-id <chatId>", "飞书群聊 chat_id（oc_xxx）")
+  .requiredOption("--output <path>", "输出 JSONL 路径")
+  .option("--profile <profile>", "lark-cli profile 名称")
+  .option("--id <id>", "样本 id", `feishu-silver-${Date.now()}`)
+  .option("--page-size <size>", "读取消息数量 1-50", "50")
+  .option("--start <time>", "起始时间 ISO 8601")
+  .option("--end <time>", "结束时间 ISO 8601")
+  .option("--label-source <source>", "explicit | llm | hybrid", "hybrid")
+  .option("--append", "追加写入 output")
+  .description("自动从真实飞书群生成脱敏 thread-linking silver set；不需要人工标注")
+  .action(async (opts) => {
+    const args = ["im", "+chat-messages-list", "--chat-id", opts.chatId, "--format", "json", "--page-size", String(opts.pageSize)];
+    if (opts.start) args.push("--start", opts.start);
+    if (opts.end) args.push("--end", opts.end);
+    if (opts.profile) args.push("--profile", opts.profile);
+    const raw = runLarkCliJson(args);
+    const messages = toNormalizedMessages(raw, opts.chatId);
+    const explicitThreads = threadMessages(messages)
+      .filter((thread) => thread.messages.length > 0)
+      .map((thread) => ({ id: thread.id, message_ids: thread.messages.map((m) => m.id), topic_hint: thread.topic_hint, confidence: thread.confidence }));
+    let labelSource = explicitThreads.every((t) => (t.confidence ?? 0) >= 0.9) ? "explicit_silver" : "heuristic_silver";
+    let threads: Array<{ id: string; message_ids: string[]; topic_hint?: string; confidence?: number }> = explicitThreads;
+    const hasExplicitLinks = messages.some((m) => !!m.thread_id || !!m.reply_to);
+    if (opts.labelSource === "llm" || (opts.labelSource === "hybrid" && !hasExplicitLinks)) {
+      const llm = await linkThreadsWithLlm(messages, { timeoutMs: 120_000 });
+      if (!llm.degraded) {
+        threads = llm.threads;
+        labelSource = "llm_silver";
+      } else if (opts.labelSource === "llm") {
+        throw new Error(`LLM silver labeling failed: ${llm.error}`);
+      } else {
+        labelSource = `${labelSource}_llm_degraded:${llm.error}`;
+      }
+    }
+    const sample = buildThreadLinkingSilverSample({ id: opts.id, messages, threads, labelSource });
+    writeJsonl(opts.output, [sample], !!opts.append);
+    console.log(JSON.stringify({ ok: true, command: "lark-cli generate-thread-silver-set", output: opts.output, messages: messages.length, threads: threads.length, label_source: labelSource, sample }, null, 2));
   });
 
 larkCli
