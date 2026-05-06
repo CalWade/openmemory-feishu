@@ -26,6 +26,7 @@ export function runFeishuWorkflow(store: MemoryStoreLike, input: FeishuWorkflowI
   if (!query) return ignore(query, "空消息");
   if (isSlashCommand(query)) return ignore(query, "OpenClaw/聊天命令不进入记忆工作流");
   if (isLikelyNoise(query)) return ignore(query, "低价值闲聊/确认消息");
+  if (isMemoryFormationStatement(query)) return ignore(query, "这是新的决策/记忆形成语句，应进入 ingest/induction，不应触发历史卡片推送");
 
   const hits = safeSearch(store, query, { project: input.project, limit: 5 });
   if (hits.length === 0) return ignore(query, "未命中相关记忆");
@@ -81,6 +82,12 @@ function isSlashCommand(text: string): boolean {
 
 function isLikelyNoise(text: string): boolean {
   return /^(ok|收到|好|嗯|哈哈|赞|可以|辛苦了)[。.!！]*$/i.test(text.trim()) || text.trim().length < 4;
+}
+
+function isMemoryFormationStatement(text: string): boolean {
+  const hasResolution = /最终决定|结论是|已定|拍板|统一为|明确决定|固定下来|先按|决定：|结论：/.test(text);
+  const hasRecallIntent = /为什么|之前|历史|要不|还是|是否|是不是|会不会|怎么|原因/.test(text);
+  return hasResolution && !hasRecallIntent;
 }
 
 function summarizeHits(hits: MemoryAtom[]) {

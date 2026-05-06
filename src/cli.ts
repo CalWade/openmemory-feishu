@@ -36,6 +36,12 @@ async function storeFromOptions(opts: { db?: string; events?: string; store?: st
   return createMemoryStore(opts);
 }
 
+function summarizeActivationActions(actions: string[]): Record<string, number> {
+  const counts: Record<string, number> = {};
+  for (const action of actions) counts[action] = (counts[action] ?? 0) + 1;
+  return counts;
+}
+
 
 
 
@@ -344,6 +350,65 @@ larkCli
       windows: windows.length,
       processed: results.filter((r) => !r.skipped).length,
       saved_total: results.filter((r) => r.saved).length,
+      results,
+    }, null, 2));
+  });
+
+larkCli
+  .command("activate-chat")
+  .requiredOption("--chat-id <chatId>", "飞书群聊 chat_id（oc_xxx）")
+  .option("--profile <profile>", "lark-cli profile 名称")
+  .option("--project <project>", "项目名")
+  .option("--page-size <size>", "读取消息数量 1-50", "20")
+  .option("--start <time>", "起始时间 ISO 8601")
+  .option("--end <time>", "结束时间 ISO 8601")
+  .option("--min-score <score>", "activation 最低匹配分", "2")
+  .option("--send-feishu-webhook", "当建议推送卡片时，通过飞书机器人 webhook 发送")
+  .option("--feishu-webhook <url>", "飞书机器人 webhook；也可用 KAIROS_FEISHU_WEBHOOK_URL")
+  .option("--db <path>", "SQLite/JSONL 数据路径")
+  .option("--events <path>", "JSONL event log 路径")
+  .option("--store <kind>", "存储后端 jsonl/sqlite，默认 jsonl")
+  .description("读取真实飞书群最近消息，并对每条消息执行 memory activation/Decision Card 判断")
+  .action(async (opts) => {
+    const args = ["im", "+chat-messages-list", "--chat-id", opts.chatId, "--format", "json", "--page-size", String(opts.pageSize)];
+    if (opts.start) args.push("--start", opts.start);
+    if (opts.end) args.push("--end", opts.end);
+    if (opts.profile) args.push("--profile", opts.profile);
+
+    const raw = runLarkCliJson(args);
+    const messages = toNormalizedMessages(raw, opts.chatId);
+    const store = await storeFromOptions(opts);
+    const webhookUrl = opts.sendFeishuWebhook ? (opts.feishuWebhook ?? loadEnvValue("KAIROS_FEISHU_WEBHOOK_URL")) : undefined;
+    if (opts.sendFeishuWebhook && !webhookUrl) throw new Error("缺少飞书 webhook：请传 --feishu-webhook 或设置 KAIROS_FEISHU_WEBHOOK_URL");
+
+    const results = [];
+    for (const message of messages) {
+      const activation = runFeishuWorkflow(store, {
+        text: message.text,
+        project: opts.project,
+        minScore: Number(opts.minScore),
+      });
+      let sent;
+      if (webhookUrl && activation.action === "push_decision_card" && activation.card) {
+        sent = await sendFeishuInteractiveWebhook(webhookUrl, activation.card);
+      }
+      results.push({
+        message_id: message.id,
+        sender: message.sender,
+        text: message.text,
+        activation,
+        sent,
+      });
+    }
+
+    console.log(JSON.stringify({
+      ok: true,
+      command: "lark-cli activate-chat",
+      chat_id: opts.chatId,
+      messages: messages.length,
+      actions: summarizeActivationActions(results.map((r) => r.activation.action)),
+      sent_total: results.filter((r) => r.sent?.ok).length,
+      webhook: webhookUrl ? redactWebhookUrl(webhookUrl) : undefined,
       results,
     }, null, 2));
   });

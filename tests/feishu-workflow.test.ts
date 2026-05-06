@@ -46,6 +46,21 @@ describe("runFeishuWorkflow", () => {
     expect(result.action).toBe("ignore");
   }));
 
+  it("新的决策形成语句不触发历史卡片，避免边记边推", () => withStore((store) => {
+    store.upsert(createManualMemory({
+      text: "决策：MVP 阶段使用 SQLite\n理由：PostgreSQL 部署成本高",
+      project: "kairos",
+      type: "decision",
+      subject: "local_storage_selection",
+      tags: ["SQLite", "PostgreSQL", "数据库选型"],
+    }));
+
+    const result = runFeishuWorkflow(store, { project: "kairos", text: "最终决定：MVP 阶段暂时不用 PostgreSQL，先用 SQLite。" });
+
+    expect(result.action).toBe("ignore");
+    expect(result.reason).toContain("记忆形成");
+  }));
+
   it("OpenClaw 斜杠命令不进入记忆工作流", () => withStore((store) => {
     const result = runFeishuWorkflow(store, { project: "kairos", text: "/model" });
     expect(result.action).toBe("ignore");
