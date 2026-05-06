@@ -1,6 +1,6 @@
 # Kairos 安装与接入
 
-当前推荐运行方式：**lark-cli Runtime 模式**。
+运行方式：**lark-cli Runtime 模式**。
 
 ## 1. 安装项目
 
@@ -91,7 +91,7 @@ npm run eval:core
 
 ## 8. OpenClaw 的角色
 
-Kairos 当前不以 OpenClaw hook 作为默认飞书消息入口。OpenClaw 在本项目中体现为：
+OpenClaw 在本项目中体现为：
 
 - Agent 宿主；
 - 项目部署和配置控制面；

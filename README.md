@@ -2,7 +2,7 @@
 
 > 面向飞书协作场景的长期项目记忆引擎。Kairos 通过官方 `lark-cli` 接入飞书群消息，自动沉淀项目决策、风险和团队约定，并在后续讨论触及历史上下文时主动推送决策卡片。
 
-## 当前推荐运行方式
+## 运行方式
 
 ```text
 飞书群聊
@@ -12,7 +12,7 @@ Kairos Memory Engine
 Dashboard 可视化 + 飞书决策卡片
 ```
 
-当前主线是 **lark-cli Runtime 模式**。OpenClaw 作为 Agent 宿主、部署和运维控制面；飞书数据接入使用官方 `lark-cli`，不再把 OpenClaw hook 作为默认消息入口。
+Kairos 使用官方 `lark-cli` 接入飞书群消息，使用飞书群自定义机器人 webhook 推送决策卡片。OpenClaw 作为 Agent 宿主、部署和运维控制面。
 
 快速接入：[`QUICKSTART.md`](./QUICKSTART.md)
 
@@ -137,11 +137,11 @@ npm run dev -- eval --suite llm-decision-extraction
 
 | 文档 | 说明 |
 |---|---|
-| [`QUICKSTART.md`](./QUICKSTART.md) | 当前主线接入飞书群的最短路径 |
+| [`QUICKSTART.md`](./QUICKSTART.md) | 接入飞书群的最短路径 |
 | [`docs/lark-cli-runbook.md`](./docs/lark-cli-runbook.md) | lark-cli Runtime 详细排障和授权说明 |
 | [`docs/demo-script.md`](./docs/demo-script.md) | 比赛展示脚本 |
 | [`docs/benchmark-report.md`](./docs/benchmark-report.md) | 自证评测报告 |
-| [`docs/archive/`](./docs/archive/) | 历史方案和已归档设计文档 |
+| [`docs/archive/`](./docs/archive/) | 归档文档 |
 
 ## 当前定位
 

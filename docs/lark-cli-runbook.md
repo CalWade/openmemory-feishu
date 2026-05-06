@@ -1,6 +1,6 @@
 # lark-cli Runtime Runbook
 
-## 当前主线
+## 运行方式
 
 Kairos 使用官方 `lark-cli` 读取飞书群消息，使用目标群自定义机器人 webhook 发送决策卡片。
 
@@ -12,8 +12,6 @@ lark-cli Runtime
 → Feishu Decision Card
 → Dashboard
 ```
-
-OpenClaw hook 不是当前默认入口。
 
 ## 1. 安装 lark-cli
 

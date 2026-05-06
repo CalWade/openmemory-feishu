@@ -1,6 +1,6 @@
 # Kairos for OpenClaw Agents
 
-> 当前主线：lark-cli Runtime。OpenClaw 作为 Agent 宿主、部署者和运维控制面；飞书数据入口由官方 `lark-cli` 承担。
+> lark-cli Runtime 负责飞书数据接入；OpenClaw 作为 Agent 宿主、部署者和运维控制面。
 
 ## 任务目标
 
