@@ -14,7 +14,10 @@
     "demo:e2e": "bash scripts/demo-e2e.sh",
     "demo:feishu-workflow": "bash scripts/demo-feishu-workflow.sh",
     "prepack": "npm run build",
-    "demo:lark-cli-chat": "bash scripts/demo-lark-cli-chat.sh"
+    "demo:lark-cli-chat": "bash scripts/demo-lark-cli-chat.sh",
+    "eval:core": "tsx src/cli.ts eval --core",
+    "dashboard": "tsx src/cli.ts eval --core >/dev/null && tsx src/cli.ts dashboard --serve --port 8787",
+    "dashboard:static": "tsx src/cli.ts eval --core >/dev/null && tsx src/cli.ts dashboard --output runs/kairos-engine-dashboard.html"
   },
   "keywords": [
     "memory",
