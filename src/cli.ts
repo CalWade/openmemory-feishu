@@ -16,6 +16,7 @@ import { extractDecisionWithLlm } from "./extractor/llmDecisionExtractor.js";
 import { extractionToMemoryAtom } from "./extractor/toMemoryAtom.js";
 import { buildDecisionCard, renderDecisionCardFeishuPayload, renderDecisionCardMarkdown } from "./memory/decisionCard.js";
 import { reconcileAndApplyMemoryAtom } from "./memory/reconcile.js";
+import { InductionQueue } from "./induction/queue.js";
 import { formatRecallAnswer } from "./memory/recallFormatter.js";
 import { redactWebhookUrl, sendFeishuInteractiveWebhook } from "./feishuWebhook.js";
 import { loadEnvValue } from "./llm/config.js";
@@ -237,6 +238,8 @@ larkCli
   .option("--events <path>", "JSONL event log 路径")
   .option("--store <kind>", "存储后端 jsonl/sqlite，默认 jsonl")
   .option("--thread-gap <ms>", "会话解缠时间间隔阈值(ms)", "300000")
+  .option("--enqueue-induction", "只将候选窗口加入 LLM slow induction 队列，不实时抽取")
+  .option("--induction-queue <path>", "induction queue JSONL 路径", "data/induction_queue.jsonl")
   .description("调用官方 lark-cli 读取群消息，线程化→窗口化→抽取→入库")
   .action(async (opts) => {
     const args = ["im", "+chat-messages-list", "--chat-id", opts.chatId, "--format", "json", "--page-size", String(opts.pageSize)];
@@ -256,7 +259,40 @@ larkCli
     // 4. 每个线程构造 CandidateWindow
     const windows = threads.map((t) => buildCandidateWindowFromThread(t));
 
-    // 5. 从窗口抽取决策
+    // 5. 可选：只入 slow induction 队列，不实时抽取
+    if (opts.enqueueInduction) {
+      const queue = new InductionQueue(opts.inductionQueue);
+      const jobs = windows
+        .filter((win) => win.has_resolution_cue || win.salience_score >= 5)
+        .map((win) => queue.enqueue({
+          id: win.id,
+          segment_id: win.thread_id ?? win.id,
+          topic_hint: win.topic_hint ?? "",
+          salience_score: win.salience_score,
+          salience_signals: win.salience_reasons,
+          candidate_eligible: true,
+          denoised_text: win.denoised_text,
+          evidence_message_ids: win.evidence_message_ids,
+          dropped_message_ids: win.dropped_message_ids,
+          estimated_tokens: win.estimated_tokens,
+          source_channel: "feishu",
+          source_type: "feishu_message",
+        }, { project: opts.project }));
+      console.log(JSON.stringify({
+        ok: true,
+        command: "lark-cli ingest-chat",
+        mode: "enqueue-induction",
+        chat_id: opts.chatId,
+        messages: messages.length,
+        threads: threads.length,
+        windows: windows.length,
+        enqueued: jobs.length,
+        jobs,
+      }, null, 2));
+      return;
+    }
+
+    // 6. 从窗口抽取决策
     const store = opts.write ? await storeFromOptions(opts) : undefined;
     const results = [];
     for (const win of windows) {
@@ -756,6 +792,52 @@ remind
   .action(async (atomId, opts) => {
     const atom = (await storeFromOptions(opts)).snoozeReminder(atomId, opts.until, { now: opts.now });
     console.log(JSON.stringify({ ok: true, command: "remind snooze", atom }, null, 2));
+  });
+
+const induction = program
+  .command("induction")
+  .description("管理 LLM slow induction/refine 队列");
+
+induction
+  .command("list", { isDefault: true })
+  .option("--queue <path>", "induction queue JSONL 路径", "data/induction_queue.jsonl")
+  .option("--status <status>", "pending/done/failed")
+  .option("--limit <limit>", "返回数量", "20")
+  .description("列出 induction job")
+  .action((opts) => {
+    const queue = new InductionQueue(opts.queue);
+    const jobs = queue.list({ status: opts.status, limit: Number(opts.limit) });
+    console.log(JSON.stringify({ ok: true, command: "induction list", total: jobs.length, jobs }, null, 2));
+  });
+
+induction
+  .command("run")
+  .option("--queue <path>", "induction queue JSONL 路径", "data/induction_queue.jsonl")
+  .option("--limit <limit>", "最多处理 pending job 数", "5")
+  .option("--project <project>", "项目名")
+  .option("--fallback", "LLM 失败时回退规则 baseline")
+  .option("--db <path>", "SQLite/JSONL 数据路径")
+  .option("--events <path>", "JSONL event log 路径")
+  .option("--store <kind>", "存储后端 jsonl/sqlite，默认 jsonl")
+  .description("异步处理 pending induction job：LLM/refine → Reconcile → 入库")
+  .action(async (opts) => {
+    const queue = new InductionQueue(opts.queue);
+    const store = await storeFromOptions(opts);
+    const jobs = queue.list({ status: "pending", limit: Number(opts.limit) });
+    const results = [];
+    for (const job of jobs) {
+      try {
+        const result = await extractDecisionWithLlm(job.window, { fallback: !!opts.fallback });
+        const atom = extractionToMemoryAtom(result, job.window, job.project ?? opts.project);
+        const reconcile = atom ? reconcileAndApplyMemoryAtom(store, atom) : { action: "NONE", reason: "extractor_returned_none" };
+        const done = queue.markDone(job, { extraction: result, atom, reconcile });
+        results.push({ job_id: job.id, status: done.status, extraction_kind: result.kind, reconcile });
+      } catch (error) {
+        const failed = queue.markFailed(job, error instanceof Error ? error.message : String(error));
+        results.push({ job_id: job.id, status: failed.status, error: failed.error, attempts: failed.attempts });
+      }
+    }
+    console.log(JSON.stringify({ ok: true, command: "induction run", processed: results.length, results }, null, 2));
   });
 
 program
